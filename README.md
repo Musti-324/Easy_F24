@@ -14,8 +14,8 @@ Un gestionale semplicissimo per Mac per tenere traccia degli **F12**:
 
 ## Installazione
 
-1. Scarica `Easy-F12.zip` dalla pagina **Releases** del repository e aprilo: comparirà `Easy F12.app`.
-2. Trascina `Easy F12.app` nella cartella **Applicazioni**.
+1. Scarica `Easy-F12.dmg` dalla pagina **Releases** del repository e aprilo con un doppio clic.
+2. Nella finestra che si apre, trascina **Easy F12** sulla cartella **Applicazioni**, poi espelli il disco "Easy F12".
 3. La prima volta: **tasto destro sull'app → Apri → Apri**.
    (L'app non è firmata con un certificato Apple a pagamento, quindi macOS chiede una conferma solo al primo avvio.)
 
@@ -54,7 +54,7 @@ Poi, dalla cartella del progetto:
 ./scripts/build.sh
 ```
 
-Il risultato è in `build/Easy F12.app` (più `build/Easy-F12.zip`).
+Il risultato è in `build/`: `Easy F12.app`, il disco di installazione `Easy-F12.dmg` e `Easy-F12.zip`.
 Su un Mac Intel si può compilare solo la versione Intel con `ARCHS=x86_64 ./scripts/build.sh`.
 
 Per modificare il codice con Xcode basta aprire `Package.swift`.

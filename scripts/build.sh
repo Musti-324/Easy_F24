@@ -1,7 +1,7 @@
 #!/bin/bash
 # Crea "Easy F12.app" per macOS 11 Big Sur o successivo, Intel e Apple Silicon.
 #
-#   ./scripts/build.sh                  → build/Easy F12.app  e  build/Easy-F12.zip
+#   ./scripts/build.sh                  → build/Easy F12.app, build/Easy-F12.dmg e build/Easy-F12.zip
 #   ARCHS=x86_64 ./scripts/build.sh     → solo Intel
 #
 # Basta avere gli Strumenti da riga di comando (xcode-select --install), Xcode non serve.
@@ -15,9 +15,10 @@ MIN_MACOS="11.0"
 ARCHS="${ARCHS:-x86_64 arm64}"
 BUILD_DIR="build"
 APP="$BUILD_DIR/$APP_NAME.app"
+DMG="$BUILD_DIR/Easy-F12.dmg"
 SDK="$(xcrun --sdk macosx --show-sdk-path)"
 
-rm -rf "$APP" "$BUILD_DIR/Easy-F12.zip"
+rm -rf "$APP" "$DMG" "$BUILD_DIR/Easy-F12.zip"
 mkdir -p "$BUILD_DIR"
 
 binaries=()
@@ -45,5 +46,14 @@ codesign --force --sign - "$APP"
 
 (cd "$BUILD_DIR" && ditto -c -k --keepParent "$APP_NAME.app" "Easy-F12.zip")
 
-echo "✓ Fatto: $APP"
-echo "  Per installarla trascinala nella cartella Applicazioni."
+echo "→ Creo Easy-F12.dmg…"
+STAGING="$BUILD_DIR/dmg"
+rm -rf "$STAGING"
+mkdir -p "$STAGING"
+cp -R "$APP" "$STAGING/"
+ln -s /Applications "$STAGING/Applicazioni"
+hdiutil create -volname "$APP_NAME" -srcfolder "$STAGING" -fs HFS+ -format UDZO -ov -quiet "$DMG"
+rm -rf "$STAGING"
+
+echo "✓ Fatto: $APP e $DMG"
+echo "  Per installarla apri il .dmg e trascina l'app su Applicazioni."
