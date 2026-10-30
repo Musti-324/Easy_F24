@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// Aggiunta o modifica di un F12.
+/// Aggiunta o modifica di un F24.
 struct FoglioModifica: View {
-    let originale: F12?
-    let onSalva: (F12) -> Void
+    let originale: F24?
+    let onSalva: (F24) -> Void
     let onAnnulla: () -> Void
 
     @State private var descrizione: String
@@ -11,7 +11,7 @@ struct FoglioModifica: View {
     @State private var scadenza: Date
     @State private var pagatoIl: Date
 
-    init(originale: F12?, onSalva: @escaping (F12) -> Void, onAnnulla: @escaping () -> Void) {
+    init(originale: F24?, onSalva: @escaping (F24) -> Void, onAnnulla: @escaping () -> Void) {
         self.originale = originale
         self.onSalva = onSalva
         self.onAnnulla = onAnnulla
@@ -38,7 +38,7 @@ struct FoglioModifica: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(originale == nil ? "Nuovo F12" : "Modifica F12")
+            Text(originale == nil ? "Nuovo F24" : "Modifica F24")
                 .font(.title2)
                 .bold()
 
@@ -93,20 +93,20 @@ struct FoglioModifica: View {
         guard puoSalvare else { return }
         let calendario = Calendar.current
         let testoImporto = importo.trimmingCharacters(in: .whitespaces)
-        var f12 = originale ?? F12(descrizione: "", scadenza: scadenza)
-        f12.descrizione = descrizione.trimmingCharacters(in: .whitespacesAndNewlines)
-        f12.importoCentesimi = testoImporto.isEmpty ? nil : Formato.centesimi(da: testoImporto)
-        f12.scadenza = calendario.startOfDay(for: scadenza)
-        if f12.isPagato {
-            f12.pagatoIl = calendario.startOfDay(for: pagatoIl)
+        var f24 = originale ?? F24(descrizione: "", scadenza: scadenza)
+        f24.descrizione = descrizione.trimmingCharacters(in: .whitespacesAndNewlines)
+        f24.importoCentesimi = testoImporto.isEmpty ? nil : Formato.centesimi(da: testoImporto)
+        f24.scadenza = calendario.startOfDay(for: scadenza)
+        if f24.isPagato {
+            f24.pagatoIl = calendario.startOfDay(for: pagatoIl)
         }
-        onSalva(f12)
+        onSalva(f24)
     }
 }
 
 /// Conferma del pagamento, con la data in cui è stato pagato (di default oggi).
 struct FoglioPagamento: View {
-    let f12: F12
+    let f24: F24
     let onConferma: (Date) -> Void
     let onAnnulla: () -> Void
 
@@ -119,7 +119,7 @@ struct FoglioPagamento: View {
                 .bold()
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(f12.descrizione)
+                Text(f24.descrizione)
                     .font(.headline)
                 Text(riepilogo)
                     .font(.subheadline)
@@ -147,10 +147,10 @@ struct FoglioPagamento: View {
 
     private var riepilogo: String {
         var parti: [String] = []
-        if let importo = f12.importoCentesimi {
+        if let importo = f24.importoCentesimi {
             parti.append(Formato.euro(importo))
         }
-        parti.append("scadenza \(Formato.data(f12.scadenza))")
+        parti.append("scadenza \(Formato.data(f24.scadenza))")
         return parti.joined(separator: " · ")
     }
 }

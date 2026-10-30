@@ -1,10 +1,10 @@
 import Combine
 import Foundation
 
-/// Tiene in memoria gli F12 e li salva in un file JSON in
-/// ~/Library/Application Support/Easy F12/f12.json
-final class F12Store: ObservableObject {
-    @Published private(set) var elementi: [F12] = []
+/// Tiene in memoria gli F24 e li salva in un file JSON in
+/// ~/Library/Application Support/Easy F24/f24.json
+final class F24Store: ObservableObject {
+    @Published private(set) var elementi: [F24] = []
     /// Messaggio da mostrare all'utente se qualcosa va storto con il file.
     @Published var errore: String?
 
@@ -13,7 +13,7 @@ final class F12Store: ObservableObject {
     /// in quel caso non lo sovrascriviamo per non perdere dati.
     private var salvataggioBloccato = false
 
-    init(fileURL: URL = F12Store.percorsoPredefinito) {
+    init(fileURL: URL = F24Store.percorsoPredefinito) {
         self.fileURL = fileURL
         carica()
     }
@@ -21,49 +21,49 @@ final class F12Store: ObservableObject {
     static var percorsoPredefinito: URL {
         let supporto = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return supporto
-            .appendingPathComponent("Easy F12", isDirectory: true)
-            .appendingPathComponent("f12.json")
+            .appendingPathComponent("Easy F24", isDirectory: true)
+            .appendingPathComponent("f24.json")
     }
 
     // MARK: - Elenchi ordinati
 
-    /// F12 non ancora pagati, dalla scadenza più vicina.
-    var daPagare: [F12] {
+    /// F24 non ancora pagati, dalla scadenza più vicina.
+    var daPagare: [F24] {
         elementi.filter { !$0.isPagato }.sorted { $0.scadenza < $1.scadenza }
     }
 
-    /// F12 pagati, dal pagamento più recente.
-    var pagati: [F12] {
+    /// F24 pagati, dal pagamento più recente.
+    var pagati: [F24] {
         elementi.filter { $0.isPagato }.sorted { ($0.pagatoIl ?? .distantPast) > ($1.pagatoIl ?? .distantPast) }
     }
 
     // MARK: - Modifiche
 
-    func aggiungi(_ f12: F12) {
-        elementi.append(f12)
+    func aggiungi(_ f24: F24) {
+        elementi.append(f24)
         salva()
     }
 
-    func aggiorna(_ f12: F12) {
-        guard let indice = elementi.firstIndex(where: { $0.id == f12.id }) else { return }
-        elementi[indice] = f12
+    func aggiorna(_ f24: F24) {
+        guard let indice = elementi.firstIndex(where: { $0.id == f24.id }) else { return }
+        elementi[indice] = f24
         salva()
     }
 
-    func segnaPagato(_ f12: F12, il data: Date) {
-        var aggiornato = f12
+    func segnaPagato(_ f24: F24, il data: Date) {
+        var aggiornato = f24
         aggiornato.pagatoIl = Calendar.current.startOfDay(for: data)
         aggiorna(aggiornato)
     }
 
-    func riportaDaPagare(_ f12: F12) {
-        var aggiornato = f12
+    func riportaDaPagare(_ f24: F24) {
+        var aggiornato = f24
         aggiornato.pagatoIl = nil
         aggiorna(aggiornato)
     }
 
-    func elimina(_ f12: F12) {
-        elementi.removeAll { $0.id == f12.id }
+    func elimina(_ f24: F24) {
+        elementi.removeAll { $0.id == f24.id }
         salva()
     }
 
@@ -71,7 +71,7 @@ final class F12Store: ObservableObject {
 
     private struct Archivio: Codable {
         var versione: Int
-        var f12: [F12]
+        var f24: [F24]
     }
 
     private func carica() {
@@ -80,20 +80,20 @@ final class F12Store: ObservableObject {
         let cartella = fileURL.deletingLastPathComponent()
         do {
             let dati = try Data(contentsOf: fileURL)
-            elementi = try F12Store.decoder.decode(Archivio.self, from: dati).f12
+            elementi = try F24Store.decoder.decode(Archivio.self, from: dati).f24
             // Copia di sicurezza di com'era l'archivio all'apertura dell'app.
-            let copia = cartella.appendingPathComponent("f12-backup.json")
+            let copia = cartella.appendingPathComponent("f24-backup.json")
             try? fm.removeItem(at: copia)
             try? fm.copyItem(at: fileURL, to: copia)
         } catch {
             // Non sovrascriviamo un file che non riusciamo a leggere: lo mettiamo da parte.
-            let destinazione = cartella.appendingPathComponent("f12-illeggibile-\(Int(Date().timeIntervalSince1970)).json")
+            let destinazione = cartella.appendingPathComponent("f24-illeggibile-\(Int(Date().timeIntervalSince1970)).json")
             do {
                 try fm.moveItem(at: fileURL, to: destinazione)
-                errore = "Non è stato possibile leggere l'archivio degli F12. Il file è stato messo da parte in:\n\(destinazione.path)"
+                errore = "Non è stato possibile leggere l'archivio degli F24. Il file è stato messo da parte in:\n\(destinazione.path)"
             } catch {
                 salvataggioBloccato = true
-                errore = "Non è stato possibile leggere l'archivio degli F12 (\(fileURL.path)). Per non perdere dati, le modifiche non verranno salvate."
+                errore = "Non è stato possibile leggere l'archivio degli F24 (\(fileURL.path)). Per non perdere dati, le modifiche non verranno salvate."
             }
         }
     }
@@ -104,10 +104,10 @@ final class F12Store: ObservableObject {
             try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(),
                                                     withIntermediateDirectories: true,
                                                     attributes: nil)
-            let dati = try F12Store.encoder.encode(Archivio(versione: 1, f12: elementi))
+            let dati = try F24Store.encoder.encode(Archivio(versione: 1, f24: elementi))
             try dati.write(to: fileURL, options: .atomic)
         } catch {
-            errore = "Non è stato possibile salvare gli F12: \(error.localizedDescription)"
+            errore = "Non è stato possibile salvare gli F24: \(error.localizedDescription)"
         }
     }
 

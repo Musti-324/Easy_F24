@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// Finestra principale: a sinistra gli F12 da pagare, a destra quelli già pagati.
+/// Finestra principale: a sinistra gli F24 da pagare, a destra quelli già pagati.
 struct ContentView: View {
-    @EnvironmentObject private var store: F12Store
+    @EnvironmentObject private var store: F24Store
     @State private var foglio: Foglio?
     @State private var avviso: Avviso?
     @State private var oggi = Date()
@@ -15,23 +15,23 @@ struct ContentView: View {
             Colonna(titolo: "Da pagare",
                     colore: .orange,
                     elementi: store.daPagare,
-                    messaggioVuoto: "Nessun F12 da pagare.\nPremi «Nuovo F12» per aggiungerne uno.",
+                    messaggioVuoto: "Nessun F24 da pagare.\nPremi «Nuovo F24» per aggiungerne uno.",
                     accessorio: {
                         Button(action: { foglio = .nuovo }) {
                             HStack(spacing: 4) {
                                 Image(systemName: "plus")
-                                Text("Nuovo F12")
+                                Text("Nuovo F24")
                             }
                         }
                         .keyboardShortcut("n", modifiers: .command)
-                        .help("Aggiungi un F12 da pagare (⌘N)")
+                        .help("Aggiungi un F24 da pagare (⌘N)")
                     },
-                    riga: { f12 in
-                        RigaDaPagare(f12: f12,
+                    riga: { f24 in
+                        RigaDaPagare(f24: f24,
                                      oggi: oggi,
-                                     onPaga: { foglio = .paga(f12) },
-                                     onModifica: { foglio = .modifica(f12) },
-                                     onElimina: { avviso = .elimina(f12) })
+                                     onPaga: { foglio = .paga(f24) },
+                                     onModifica: { foglio = .modifica(f24) },
+                                     onElimina: { avviso = .elimina(f24) })
                     })
 
             Divider()
@@ -39,13 +39,13 @@ struct ContentView: View {
             Colonna(titolo: "Pagati",
                     colore: .green,
                     elementi: store.pagati,
-                    messaggioVuoto: "Ancora nessun F12 pagato.",
+                    messaggioVuoto: "Ancora nessun F24 pagato.",
                     accessorio: { EmptyView() },
-                    riga: { f12 in
-                        RigaPagata(f12: f12,
-                                   onModifica: { foglio = .modifica(f12) },
-                                   onRiporta: { store.riportaDaPagare(f12) },
-                                   onElimina: { avviso = .elimina(f12) })
+                    riga: { f24 in
+                        RigaPagata(f24: f24,
+                                   onModifica: { foglio = .modifica(f24) },
+                                   onRiporta: { store.riportaDaPagare(f24) },
+                                   onElimina: { avviso = .elimina(f24) })
                     })
         }
         .frame(minWidth: 820, minHeight: 480)
@@ -80,17 +80,17 @@ struct ContentView: View {
                                chiudiFoglio()
                            },
                            onAnnulla: chiudiFoglio)
-        case .modifica(let f12):
-            FoglioModifica(originale: f12,
+        case .modifica(let f24):
+            FoglioModifica(originale: f24,
                            onSalva: { modificato in
                                store.aggiorna(modificato)
                                chiudiFoglio()
                            },
                            onAnnulla: chiudiFoglio)
-        case .paga(let f12):
-            FoglioPagamento(f12: f12,
+        case .paga(let f24):
+            FoglioPagamento(f24: f24,
                             onConferma: { data in
-                                store.segnaPagato(f12, il: data)
+                                store.segnaPagato(f24, il: data)
                                 chiudiFoglio()
                             },
                             onAnnulla: chiudiFoglio)
@@ -103,10 +103,10 @@ struct ContentView: View {
 
     private func alert(per avviso: Avviso) -> Alert {
         switch avviso {
-        case .elimina(let f12):
-            return Alert(title: Text("Eliminare questo F12?"),
-                         message: Text("«\(f12.descrizione)» verrà eliminato definitivamente."),
-                         primaryButton: .destructive(Text("Elimina")) { store.elimina(f12) },
+        case .elimina(let f24):
+            return Alert(title: Text("Eliminare questo F24?"),
+                         message: Text("«\(f24.descrizione)» verrà eliminato definitivamente."),
+                         primaryButton: .destructive(Text("Elimina")) { store.elimina(f24) },
                          secondaryButton: .cancel(Text("Annulla")))
         case .errore(let messaggio):
             return Alert(title: Text("Attenzione"),
@@ -119,26 +119,26 @@ struct ContentView: View {
 /// Il foglio (finestra modale) aperto sopra la finestra principale.
 enum Foglio: Identifiable {
     case nuovo
-    case modifica(F12)
-    case paga(F12)
+    case modifica(F24)
+    case paga(F24)
 
     var id: String {
         switch self {
         case .nuovo: return "nuovo"
-        case .modifica(let f12): return "modifica-" + f12.id.uuidString
-        case .paga(let f12): return "paga-" + f12.id.uuidString
+        case .modifica(let f24): return "modifica-" + f24.id.uuidString
+        case .paga(let f24): return "paga-" + f24.id.uuidString
         }
     }
 }
 
 /// Le finestre di conferma o di errore.
 enum Avviso: Identifiable {
-    case elimina(F12)
+    case elimina(F24)
     case errore(String)
 
     var id: String {
         switch self {
-        case .elimina(let f12): return "elimina-" + f12.id.uuidString
+        case .elimina(let f24): return "elimina-" + f24.id.uuidString
         case .errore(let messaggio): return "errore-" + messaggio
         }
     }
@@ -148,10 +148,10 @@ enum Avviso: Identifiable {
 struct Colonna<Accessorio: View, Riga: View>: View {
     let titolo: String
     let colore: Color
-    let elementi: [F12]
+    let elementi: [F24]
     let messaggioVuoto: String
     let accessorio: () -> Accessorio
-    let riga: (F12) -> Riga
+    let riga: (F24) -> Riga
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -166,8 +166,8 @@ struct Colonna<Accessorio: View, Riga: View>: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 8) {
-                        ForEach(elementi) { f12 in
-                            riga(f12)
+                        ForEach(elementi) { f24 in
+                            riga(f24)
                         }
                     }
                     .padding(12)

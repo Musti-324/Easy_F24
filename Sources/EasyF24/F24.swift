@@ -1,7 +1,7 @@
 import Foundation
 
-/// Un modello F12. Finché `pagatoIl` è nil è considerato "da pagare".
-struct F12: Identifiable, Codable, Equatable {
+/// Un modello F24. Finché `pagatoIl` è nil è considerato "da pagare".
+struct F24: Identifiable, Codable, Equatable {
     var id: UUID
     var descrizione: String
     /// Importo in centesimi di euro; nil se non indicato.

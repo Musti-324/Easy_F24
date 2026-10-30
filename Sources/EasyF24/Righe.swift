@@ -1,22 +1,22 @@
 import SwiftUI
 
-/// Un F12 ancora da pagare, con la scadenza evidenziata se vicina o passata.
+/// Un F24 ancora da pagare, con la scadenza evidenziata se vicina o passata.
 struct RigaDaPagare: View {
-    let f12: F12
+    let f24: F24
     let oggi: Date
     let onPaga: () -> Void
     let onModifica: () -> Void
     let onElimina: () -> Void
 
     var body: some View {
-        let stato = StatoScadenza(scadenza: f12.scadenza, oggi: oggi)
+        let stato = StatoScadenza(scadenza: f24.scadenza, oggi: oggi)
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
-                Text(f12.descrizione)
+                Text(f24.descrizione)
                     .font(.headline)
                     .lineLimit(2)
                 Spacer(minLength: 8)
-                if let importo = f12.importoCentesimi {
+                if let importo = f24.importoCentesimi {
                     Text(Formato.euro(importo))
                         .font(Font.headline.monospacedDigit())
                 }
@@ -30,7 +30,7 @@ struct RigaDaPagare: View {
                 .foregroundColor(stato.colore)
                 Spacer(minLength: 8)
                 Button("Segna pagato", action: onPaga)
-                    .help("Segna questo F12 come pagato")
+                    .help("Segna questo F24 come pagato")
             }
         }
         .modifier(StileScheda(bordo: stato.urgente ? stato.colore : nil))
@@ -44,9 +44,9 @@ struct RigaDaPagare: View {
     }
 }
 
-/// Un F12 già pagato, con la data del pagamento.
+/// Un F24 già pagato, con la data del pagamento.
 struct RigaPagata: View {
-    let f12: F12
+    let f24: F24
     let onModifica: () -> Void
     let onRiporta: () -> Void
     let onElimina: () -> Void
@@ -57,17 +57,17 @@ struct RigaPagata: View {
                 .font(.title2)
                 .foregroundColor(.green)
             VStack(alignment: .leading, spacing: 4) {
-                Text(f12.descrizione)
+                Text(f24.descrizione)
                     .font(.headline)
                     .lineLimit(2)
-                Text("Pagato il \(Formato.data(f12.pagatoIl ?? f12.scadenza))")
+                Text("Pagato il \(Formato.data(f24.pagatoIl ?? f24.scadenza))")
                     .font(.subheadline)
                 Text(dettaglioScadenza)
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
             Spacer(minLength: 8)
-            if let importo = f12.importoCentesimi {
+            if let importo = f24.importoCentesimi {
                 Text(Formato.euro(importo))
                     .font(Font.headline.monospacedDigit())
             }
@@ -83,9 +83,9 @@ struct RigaPagata: View {
     }
 
     private var dettaglioScadenza: String {
-        var testo = "Scadenza \(Formato.data(f12.scadenza))"
-        if let pagatoIl = f12.pagatoIl {
-            let ritardo = Formato.giorni(da: f12.scadenza, a: pagatoIl)
+        var testo = "Scadenza \(Formato.data(f24.scadenza))"
+        if let pagatoIl = f24.pagatoIl {
+            let ritardo = Formato.giorni(da: f24.scadenza, a: pagatoIl)
             if ritardo > 0 {
                 testo += " · pagato con \(Formato.giorniTesto(ritardo)) di ritardo"
             }

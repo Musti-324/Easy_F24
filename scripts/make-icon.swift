@@ -31,12 +31,12 @@ func disegna(lato: Int) -> NSBitmapImageRep {
                ending: NSColor(calibratedRed: 0.07, green: 0.29, blue: 0.75, alpha: 1))!
         .draw(in: forma, angle: -90)
 
-    // Scritta "F12".
+    // Scritta "F24".
     let attributi: [NSAttributedString.Key: Any] = [
         .font: NSFont.systemFont(ofSize: 300 * s, weight: .heavy),
         .foregroundColor: NSColor.white,
     ]
-    let scritta = NSAttributedString(string: "F12", attributes: attributi)
+    let scritta = NSAttributedString(string: "F24", attributes: attributi)
     let misura = scritta.size()
     scritta.draw(at: NSPoint(x: sfondo.midX - misura.width / 2, y: 470 * s))
 
