@@ -1,8 +1,9 @@
 import Combine
 import Foundation
 
-/// Tiene in memoria gli F24 e li salva in un file JSON in
-/// ~/Library/Application Support/Easy F24/f24.json
+/// Tiene in memoria gli F24 e li salva in un file JSON "Easy F24/f24.json" nella cartella
+/// Application Support dell'app. Con la sandbox è dentro il contenitore:
+/// ~/Library/Containers/com.diegomustea.EasyF24/Data/Library/Application Support/Easy F24/
 final class F24Store: ObservableObject {
     @Published private(set) var elementi: [F24] = []
     /// Messaggio da mostrare all'utente se qualcosa va storto con il file.
@@ -87,6 +88,8 @@ final class F24Store: ObservableObject {
         do {
             let dati = try Data(contentsOf: fileURL)
             elementi = try F24Store.decoder.decode(Archivio.self, from: dati).f24
+            // Es. file arrivati dalle versioni precedenti: diventano leggibili solo dall'utente.
+            FileRiservato.proteggi(fileURL)
             // Copia di sicurezza di com'era l'archivio all'apertura dell'app.
             try? FileRiservato.scrivi(dati, in: cartella.appendingPathComponent("f24-backup.json"))
         } catch {
@@ -135,5 +138,14 @@ enum FileRiservato {
         try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: cartella.path)
         try dati.write(to: url, options: .atomic)
         try? fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+    }
+
+    /// Porta a 0600 un file esistente e a 0700 la sua cartella.
+    static func proteggi(_ url: URL) {
+        let fm = FileManager.default
+        try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: url.deletingLastPathComponent().path)
+        if fm.fileExists(atPath: url.path) {
+            try? fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        }
     }
 }

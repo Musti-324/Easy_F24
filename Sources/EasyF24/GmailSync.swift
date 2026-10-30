@@ -60,6 +60,7 @@ final class GmailSync: ObservableObject {
         fileURL = store.fileURL.deletingLastPathComponent().appendingPathComponent("gmail.json")
         impostazioni = (try? Data(contentsOf: fileURL))
             .flatMap { try? GmailSync.decoder.decode(Impostazioni.self, from: $0) } ?? Impostazioni()
+        FileRiservato.proteggi(fileURL)
         stato = auth.credenziali == nil ? .daConfigurare : (auth.collegato ? .collegato : .nonCollegato)
     }
 

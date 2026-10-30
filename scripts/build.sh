@@ -42,7 +42,10 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 lipo -create "${binaries[@]}" -output "$APP/Contents/MacOS/$EXECUTABLE"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
-codesign --force --sign - "$APP"
+cp Resources/container-migration.plist "$APP/Contents/Resources/container-migration.plist"
+# Firma ad-hoc con sandbox (Resources/EasyF24.entitlements) e runtime protetto,
+# che impedisce di iniettare codice nell'app.
+codesign --force --sign - --options runtime --entitlements Resources/EasyF24.entitlements "$APP"
 
 (cd "$BUILD_DIR" && ditto -c -k --keepParent "$APP_NAME.app" "Easy_F24.zip")
 

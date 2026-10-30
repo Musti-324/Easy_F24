@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- L'app gira chiusa nella sandbox di macOS: vede solo la propria cartella. -->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<!-- Connessioni in uscita verso Google (accesso e API di Gmail). -->
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<!-- Server locale su 127.0.0.1 che riceve il ritorno dal browser dopo l'accesso a Google. -->
+	<key>com.apple.security.network.server</key>
+	<true/>
+	<!-- Lettura del solo file scelto dall'utente con "Importa file JSON…". -->
+	<key>com.apple.security.files.user-selected.read-only</key>
+	<true/>
+</dict>
+</plist>

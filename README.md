@@ -88,6 +88,10 @@ Google chiede che ogni app che legge Gmail abbia delle proprie credenziali. Sono
 - **Rete.** Solo HTTPS verso Google, senza cache su disco né cookie: email, allegati e token non restano nella cache.
 - **Allegati.** Vengono letti solo PDF (al massimo 10 per email e 10 MB ciascuno); le email in HTML non vengono
   mai mostrate, quindi niente immagini remote o pixel traccianti.
+- **Sandbox di macOS.** L'app gira chiusa nella sandbox: può usare solo la propria cartella, collegarsi a Internet,
+  ricevere il ritorno dal browser su `127.0.0.1` e leggere il file JSON che scegli tu con «Importa file JSON…».
+  Non può leggere documenti, foto, email o dati di altre app. Il **runtime protetto** impedisce di iniettarle codice.
+  I permessi sono in `Resources/EasyF24.entitlements`.
 - **File.** La cartella dei dati è leggibile solo dal tuo utente (permessi 700, file 600).
 - **Nessuna libreria esterna**: solo framework di Apple.
 - **Download integro.** Ogni release riporta l'impronta SHA-256 dei file. Prima di aprire il .dmg puoi controllarla nel Terminale:
@@ -107,19 +111,22 @@ Google chiede che ogni app che legge Gmail abbia delle proprie credenziali. Sono
   non aprire allegati inattesi e, se possibile, usa un utente non amministratore.
 - **L'app non è firmata con un certificato Apple (Developer ID) né notarizzata**: per questo macOS chiede conferma
   al primo avvio e non può garantire chi l'ha prodotta. Scarica solo dalla pagina Releases e controlla l'impronta SHA-256.
-- **L'app non è in sandbox**: se un PDF costruito per attaccare macOS venisse letto, avrebbe gli stessi permessi del tuo
-  utente. Per questo vengono letti solo PDF di email verificate del commercialista.
+- **I PDF li legge macOS.** Una falla di Big Sur nella lettura dei PDF resterebbe sfruttabile, ma la sandbox ne limita
+  i danni ai soli dati di Easy F24; in più vengono letti solo PDF di email verificate del commercialista.
 - Se il commercialista usa una casella di un provider condiviso (per esempio @libero.it), la verifica conferma il
   provider, non la singola casella. Se invece le sue email vere vengono segnalate come «non verificate», il suo dominio
   non è configurato bene (SPF/DKIM): aggiungi l'F24 a mano e avvisalo.
 
 ## Dove sono salvati i dati
 
-Tutto resta sul Mac, in un file leggibile:
+Tutto resta sul Mac, in un file leggibile. Per via della sandbox la cartella è dentro il «contenitore» dell'app:
 
 ```
-~/Library/Application Support/Easy F24/f24.json
+~/Library/Containers/com.diegomustea.EasyF24/Data/Library/Application Support/Easy F24/f24.json
 ```
+
+Chi aggiorna da una versione precedente alla 1.3 non deve fare nulla: al primo avvio macOS sposta da solo
+la vecchia cartella `~/Library/Application Support/Easy F24` nel contenitore.
 
 A ogni apertura dell'app viene fatta una copia di sicurezza in `f24-backup.json`, nella stessa cartella.
 Nella stessa cartella `gmail.json` contiene l'email del commercialista e l'ultimo modulo trovato su Gmail;
@@ -165,4 +172,7 @@ Sources/EasyF24/
   Portachiavi.swift  salvataggio delle credenziali nel Portachiavi
   VerificaMittente.swift  controlli contro le email false (indirizzo, SPF/DKIM/DMARC)
   Rete.swift         connessione verso Google senza cache né cookie
+Resources/
+  EasyF24.entitlements        permessi della sandbox
+  container-migration.plist   spostamento dei dati delle versioni precedenti nella sandbox
 ```
