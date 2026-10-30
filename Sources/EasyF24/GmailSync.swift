@@ -27,9 +27,23 @@ final class GmailSync: ObservableObject {
 
     struct Impostazioni: Codable, Equatable {
         var emailCommercialista = ""
+        /// Accetta le email di qualsiasi indirizzo del dominio del commercialista (es. tutto lo studio),
+        /// non solo del suo indirizzo. Non vale per i provider pubblici come gmail.com.
+        var tuttoIlDominio = true
         /// Account Gmail collegato (solo per mostrarlo).
         var account: String?
         var ultimoModulo: UltimoModulo?
+
+        init() {}
+
+        // I gmail.json delle versioni precedenti non hanno "tuttoIlDominio".
+        init(from decoder: Decoder) throws {
+            let valori = try decoder.container(keyedBy: CodingKeys.self)
+            emailCommercialista = try valori.decodeIfPresent(String.self, forKey: .emailCommercialista) ?? ""
+            tuttoIlDominio = try valori.decodeIfPresent(Bool.self, forKey: .tuttoIlDominio) ?? true
+            account = try valori.decodeIfPresent(String.self, forKey: .account)
+            ultimoModulo = try valori.decodeIfPresent(UltimoModulo.self, forKey: .ultimoModulo)
+        }
     }
 
     /// Testo che l'oggetto dell'email deve contenere.
@@ -48,6 +62,20 @@ final class GmailSync: ObservableObject {
 
     var ultimoModulo: UltimoModulo? { impostazioni.ultimoModulo }
     var emailCommercialistaValida: Bool { GmailSync.emailValida(impostazioni.emailCommercialista) }
+
+    /// Es. "studio-esempio.it".
+    var dominioCommercialista: String? { VerificaMittente.dominio(di: impostazioni.emailCommercialista) }
+
+    /// Si cercano le email di tutto il dominio: solo se scelto e se il dominio non è un provider pubblico.
+    var cercaPerDominio: Bool {
+        guard impostazioni.tuttoIlDominio, let dominio = dominioCommercialista else { return false }
+        return !VerificaMittente.providerPubblico(dominio)
+    }
+
+    /// Chi viene cercato: "@studio-esempio.it" (tutto il dominio) o "studio@studio-esempio.it".
+    var mittenteCercato: String {
+        cercaPerDominio ? "@" + (dominioCommercialista ?? "") : impostazioni.emailCommercialista
+    }
 
     let auth: GoogleAuth
     private let store: F24Store
@@ -81,6 +109,12 @@ final class GmailSync: ObservableObject {
         impostazioni.emailCommercialista = pulita
         // Con un altro commercialista si riparte dal suo modulo più recente.
         impostazioni.ultimoModulo = nil
+        salva()
+    }
+
+    func impostaTuttoIlDominio(_ attivo: Bool) {
+        guard attivo != impostazioni.tuttoIlDominio else { return }
+        impostazioni.tuttoIlDominio = attivo
         salva()
     }
 
@@ -132,9 +166,10 @@ final class GmailSync: ObservableObject {
 
     // MARK: - Controllo
 
-    /// La ricerca fatta su Gmail: mittente = commercialista, oggetto con "MOD. F24".
+    /// La ricerca fatta su Gmail: mittente = commercialista (o il suo dominio), oggetto con "MOD. F24".
     var query: String {
-        var parti = ["from:\(impostazioni.emailCommercialista)", "subject:\"\(GmailSync.oggettoRichiesto)\""]
+        let mittente = cercaPerDominio ? (dominioCommercialista ?? "") : impostazioni.emailCommercialista
+        var parti = ["from:\(mittente)", "subject:\"\(GmailSync.oggettoRichiesto)\""]
         if let ultimo = impostazioni.ultimoModulo {
             // Un giorno di margine: il confronto preciso si fa poi sull'ora di arrivo.
             parti.append("after:\(ultimo.ricevutoIlMs / 1000 - 86_400)")
@@ -185,7 +220,8 @@ final class GmailSync: ObservableObject {
         // Gmail cerca per parole: qui si controlla che indirizzo e oggetto siano proprio quelli giusti
         // e che l'email sia autentica, perché il mittente di un'email si può falsificare.
         let email = impostazioni.emailCommercialista
-        let candidati = messaggi.filter { GmailSync.eDelCommercialista($0, email: email) }
+        let perDominio = cercaPerDominio
+        let candidati = messaggi.filter { GmailSync.eDelCommercialista($0, email: email, tuttoIlDominio: perDominio) }
         let validi = candidati.filter { $0.autenticato(da: email) }.sorted { $0.ricevutoIlMs < $1.ricevutoIlMs }
         let ultimoMs = impostazioni.ultimoModulo?.ricevutoIlMs ?? 0
         let ignorate = candidati.filter { !$0.autenticato(da: email) && $0.ricevutoIlMs > ultimoMs }.count
@@ -250,11 +286,18 @@ final class GmailSync: ObservableObject {
         }
     }
 
-    /// Indirizzo del mittente identico a quello del commercialista (non basta che compaia nel nome)
-    /// e almeno "MOD. F24" nell'oggetto.
-    static func eDelCommercialista(_ messaggio: MessaggioGmail, email: String) -> Bool {
+    /// Indirizzo vero del mittente (non basta che compaia nel nome) uguale a quello del commercialista,
+    /// oppure dello stesso dominio se `tuttoIlDominio`; e almeno "MOD. F24" nell'oggetto.
+    static func eDelCommercialista(_ messaggio: MessaggioGmail, email: String, tuttoIlDominio: Bool) -> Bool {
         let oggettoGiusto = messaggio.oggetto.range(of: #"MOD\.\s*F24"#, options: [.regularExpression, .caseInsensitive]) != nil
-        return oggettoGiusto && VerificaMittente.indirizzo(messaggio.mittente) == email.lowercased()
+        let mittente = VerificaMittente.indirizzo(messaggio.mittente)
+        let mittenteGiusto: Bool
+        if tuttoIlDominio, let dominio = VerificaMittente.dominio(di: email) {
+            mittenteGiusto = VerificaMittente.delDominio(mittente, dominio)
+        } else {
+            mittenteGiusto = mittente == email.lowercased()
+        }
+        return oggettoGiusto && mittenteGiusto
     }
 
     static func emailValida(_ email: String) -> Bool {

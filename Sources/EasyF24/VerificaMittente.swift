@@ -50,6 +50,30 @@ enum VerificaMittente {
         return false
     }
 
+    /// Caselle pubbliche o PEC: chiunque può avere un indirizzo lì, quindi per questi domini
+    /// vale solo l'indirizzo esatto del commercialista, mai "tutto il dominio".
+    static let providerPubblici: Set<String> = [
+        "gmail.com", "googlemail.com", "icloud.com", "me.com", "mac.com", "outlook.com", "outlook.it",
+        "hotmail.com", "hotmail.it", "live.com", "live.it", "msn.com", "yahoo.com", "yahoo.it", "ymail.com",
+        "aol.com", "gmx.com", "gmx.it", "proton.me", "protonmail.com", "libero.it", "virgilio.it", "alice.it",
+        "tim.it", "tin.it", "tiscali.it", "fastwebnet.it", "email.it", "inwind.it", "iol.it", "katamail.com",
+        "aruba.it", "pec.it", "arubapec.it", "legalmail.it", "postecert.it", "registerpec.it",
+        "sicurezzapostale.it", "pec.libero.it",
+    ]
+
+    static func providerPubblico(_ dominio: String) -> Bool {
+        let dominio = dominio.lowercased()
+        return providerPubblici.contains { dominio == $0 || dominio.hasSuffix("." + $0) }
+    }
+
+    /// True se `indirizzo` è del dominio indicato o di un suo sottodominio
+    /// ("paola@studio-esempio.it" sì, "x@studio-esempio.it.truffa.com" no).
+    static func delDominio(_ indirizzo: String, _ dominio: String) -> Bool {
+        guard indirizzo.contains("@"), let suo = self.dominio(di: indirizzo) else { return false }
+        let dominio = dominio.lowercased()
+        return suo == dominio || suo.hasSuffix("." + dominio)
+    }
+
     /// "studio@bianchi.it", "@bianchi.it" o "bianchi.it" → "bianchi.it".
     static func dominio(di testo: String) -> String? {
         let dominio = (testo.split(separator: "@", omittingEmptySubsequences: false).last.map(String.init) ?? "")

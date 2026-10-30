@@ -34,8 +34,11 @@ Un gestionale semplicissimo per Mac per tenere traccia degli **F24**:
 
 Easy F24 può leggere la tua casella Gmail e aggiungere da solo gli F24 che ti manda il commercialista.
 
-- Cerca **solo** le email inviate dall'indirizzo del commercialista che inserisci nell'app
-  e con almeno **«MOD. F24»** nell'oggetto (ricerca Gmail: `from:<commercialista> subject:"MOD. F24"`).
+- Cerca **solo** le email del commercialista con almeno **«MOD. F24»** nell'oggetto
+  (ricerca Gmail: `from:<commercialista> subject:"MOD. F24"`). Se lo studio ha un dominio proprio
+  (es. `studio@studio-esempio.it`), di default accetta **qualsiasi indirizzo di quel dominio**, così arrivano anche
+  gli F24 mandati dai colleghi; l'opzione si può spegnere. Per i provider pubblici (gmail.com, libero.it, PEC…)
+  vale sempre e solo l'indirizzo esatto, perché lì chiunque può avere una casella.
 - Ricorda l'**ultimo modulo trovato** (`ultimoModulo` in `gmail.json`): a ogni controllo aggiunge solo le email
   arrivate dopo. La prima volta prende solo il modulo più recente, per non riempire la lista con quelli vecchi.
 - Dal PDF allegato legge il **saldo finale**; la **scadenza** la prende dall'oggetto o dal testo dell'email
@@ -60,7 +63,7 @@ Google chiede che ogni app che legge Gmail abbia delle proprie credenziali. Sono
 4. In **Credenziali → Crea credenziali → ID client OAuth** (o **Client → Crea client**) scegli
    **App desktop** e scarica il file JSON.
 5. In Easy F24 premi **Collega Gmail…**:
-   1. scrivi l'**email del commercialista**;
+   1. scrivi l'**email del commercialista** (se lo studio ha un dominio proprio, puoi accettare tutti i suoi indirizzi);
    2. premi **Importa file JSON…** e scegli il file appena scaricato (oppure incolla Client ID e client secret);
    3. premi **Accedi con Google…**: si apre il browser, scegli il tuo account e consenti l'accesso.
 
@@ -77,7 +80,7 @@ Google chiede che ogni app che legge Gmail abbia delle proprie credenziali. Sono
 **Cosa fa l'app per proteggerti**
 
 - **Email false.** Il mittente di un'email si può falsificare. Easy F24 importa un'email solo se:
-  l'indirizzo vero (non il nome visualizzato) è esattamente quello del commercialista, l'oggetto contiene
+  l'indirizzo vero (non il nome visualizzato) è quello del commercialista o del dominio del suo studio, l'oggetto contiene
   «MOD. F24» e Gmail ha verificato che viene davvero dal suo dominio (SPF, DKIM o DMARC).
   Le email che non superano la verifica non vengono importate e sono segnalate in basso con uno scudo arancione.
 - **Accesso a Google.** Si fa nel browser (OAuth con PKCE e controllo dello «state»): l'app non vede mai la password.

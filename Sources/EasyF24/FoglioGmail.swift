@@ -8,6 +8,7 @@ struct FoglioGmail: View {
     let onChiudi: () -> Void
 
     @State private var emailCommercialista: String
+    @State private var tuttoIlDominio: Bool
     @State private var clientId: String
     @State private var clientSecret: String
     @State private var modificaCredenziali: Bool
@@ -17,12 +18,14 @@ struct FoglioGmail: View {
         self.gmail = gmail
         self.onChiudi = onChiudi
         _emailCommercialista = State(initialValue: gmail.impostazioni.emailCommercialista)
+        _tuttoIlDominio = State(initialValue: gmail.impostazioni.tuttoIlDominio)
         _clientId = State(initialValue: gmail.auth.credenziali?.clientId ?? "")
         _clientSecret = State(initialValue: gmail.auth.credenziali?.clientSecret ?? "")
         _modificaCredenziali = State(initialValue: gmail.auth.credenziali == nil)
     }
 
     private var emailValida: Bool { GmailSync.emailValida(emailCommercialista.trimmingCharacters(in: .whitespaces)) }
+    private var dominioInserito: String? { emailValida ? VerificaMittente.dominio(di: emailCommercialista) : nil }
     private var credenzialiCompilate: Bool {
         !clientId.trimmingCharacters(in: .whitespaces).isEmpty && !clientSecret.trimmingCharacters(in: .whitespaces).isEmpty
     }
@@ -72,6 +75,19 @@ struct FoglioGmail: View {
                 Text("Indirizzo email non valido")
                     .font(.caption)
                     .foregroundColor(.red)
+            } else if let dominio = dominioInserito, !VerificaMittente.providerPubblico(dominio) {
+                Toggle("Accetta anche gli altri indirizzi @\(dominio) (es. colleghi dello studio)", isOn: $tuttoIlDominio)
+                    .font(.callout)
+                Text(tuttoIlDominio
+                     ? "Vengono cercate le email di qualsiasi indirizzo @\(dominio)."
+                     : "Vengono cercate solo le email inviate da questo indirizzo.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            } else if let dominio = dominioInserito {
+                Text("Vengono cercate solo le email inviate da questo indirizzo: su @\(dominio) chiunque può avere una casella.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             } else {
                 Text("Vengono cercate solo le email inviate da questo indirizzo.")
                     .font(.caption)
@@ -204,6 +220,7 @@ struct FoglioGmail: View {
     private func salvaCommercialista() {
         if emailValida {
             gmail.impostaEmailCommercialista(emailCommercialista)
+            gmail.impostaTuttoIlDominio(tuttoIlDominio)
         }
     }
 
@@ -262,9 +279,9 @@ struct BarraGmail: View {
             return "Accesso a Gmail in corso nel browser…"
         case .collegato:
             if gmail.inControllo {
-                return "Controllo delle email di \(gmail.impostazioni.emailCommercialista)…"
+                return "Controllo delle email di \(gmail.mittenteCercato)…"
             }
-            var parti = ["Gmail: email da \(gmail.impostazioni.emailCommercialista)"]
+            var parti = ["Gmail: email da \(gmail.mittenteCercato)"]
             if let quando = gmail.ultimoControllo {
                 let giorno = Calendar.current.isDateInToday(quando) ? "" : "il \(Formato.data(quando)) "
                 parti.append("controllate \(giorno)alle \(Formato.ora(quando))")
