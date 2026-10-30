@@ -11,9 +11,21 @@ enum Formato {
         return formatter
     }()
 
+    private static let formatoOra: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.dateFormat = "HH:mm"
+        return formatter
+    }()
+
     /// 16/11/2026
     static func data(_ data: Date) -> String {
         formatoData.string(from: data)
+    }
+
+    /// 10:32
+    static func ora(_ data: Date) -> String {
+        formatoOra.string(from: data)
     }
 
     /// 1.234,56 €

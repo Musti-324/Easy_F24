@@ -53,6 +53,7 @@ final class F24Store: ObservableObject {
     func segnaPagato(_ f24: F24, il data: Date) {
         var aggiornato = f24
         aggiornato.pagatoIl = Calendar.current.startOfDay(for: data)
+        aggiornato.daVerificare = false
         aggiorna(aggiornato)
     }
 
@@ -60,6 +61,11 @@ final class F24Store: ObservableObject {
         var aggiornato = f24
         aggiornato.pagatoIl = nil
         aggiorna(aggiornato)
+    }
+
+    /// True se c'è già un F24 importato da questo messaggio Gmail.
+    func contiene(gmailMessageId id: String) -> Bool {
+        elementi.contains { $0.gmailMessageId == id }
     }
 
     func elimina(_ f24: F24) {

@@ -7,6 +7,7 @@ struct RigaDaPagare: View {
     let onPaga: () -> Void
     let onModifica: () -> Void
     let onElimina: () -> Void
+    var onApriEmail: (() -> Void)?
 
     var body: some View {
         let stato = StatoScadenza(scadenza: f24.scadenza, oggi: oggi)
@@ -32,12 +33,23 @@ struct RigaDaPagare: View {
                 Button("Segna pagato", action: onPaga)
                     .help("Segna questo F24 come pagato")
             }
+            if f24.gmailMessageId != nil {
+                HStack(spacing: 4) {
+                    Image(systemName: "envelope")
+                    Text(f24.daVerificare ? "Arrivato via Gmail · controlla importo e scadenza" : "Arrivato via Gmail")
+                }
+                .font(.caption)
+                .foregroundColor(f24.daVerificare ? .orange : .secondary)
+            }
         }
         .modifier(StileScheda(bordo: stato.urgente ? stato.colore : nil))
         .onTapGesture(count: 2, perform: onModifica)
         .contextMenu {
             Button("Segna come pagato…", action: onPaga)
             Button("Modifica…", action: onModifica)
+            if let apri = onApriEmail {
+                Button("Apri l'email in Gmail", action: apri)
+            }
             Divider()
             Button("Elimina…", action: onElimina)
         }
@@ -50,6 +62,7 @@ struct RigaPagata: View {
     let onModifica: () -> Void
     let onRiporta: () -> Void
     let onElimina: () -> Void
+    var onApriEmail: (() -> Void)?
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
@@ -76,6 +89,9 @@ struct RigaPagata: View {
         .onTapGesture(count: 2, perform: onModifica)
         .contextMenu {
             Button("Modifica…", action: onModifica)
+            if let apri = onApriEmail {
+                Button("Apri l'email in Gmail", action: apri)
+            }
             Button("Riporta tra i da pagare", action: onRiporta)
             Divider()
             Button("Elimina…", action: onElimina)

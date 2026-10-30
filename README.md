@@ -28,6 +28,49 @@ Un gestionale semplicissimo per Mac per tenere traccia degli **F24**:
 | Modificare un F24 | Doppio clic sulla scheda, oppure tasto destro → **Modifica…** |
 | Annullare un pagamento | Tasto destro su un F24 pagato → **Riporta tra i da pagare** |
 | Eliminare un F24 | Tasto destro → **Elimina…** |
+| Prendere gli F24 dalle email del commercialista | Pulsante **Collega Gmail…** in basso (vedi sotto) |
+
+## F24 automatici da Gmail
+
+Easy F24 può leggere la tua casella Gmail e aggiungere da solo gli F24 che ti manda il commercialista.
+
+- Cerca **solo** le email inviate dall'indirizzo del commercialista che inserisci nell'app
+  e con almeno **«MOD. F24»** nell'oggetto (ricerca Gmail: `from:<commercialista> subject:"MOD. F24"`).
+- Ricorda l'**ultimo modulo trovato** (`ultimoModulo` in `gmail.json`): a ogni controllo aggiunge solo le email
+  arrivate dopo. La prima volta prende solo il modulo più recente, per non riempire la lista con quelli vecchi.
+- Dal PDF allegato legge il **saldo finale**; la **scadenza** la prende dall'oggetto o dal testo dell'email
+  (es. «scadenza 16/12/2026», «da pagare entro il 16 novembre 2026»). Se un'email contiene più moduli PDF,
+  ogni modulo diventa un F24.
+- Se non trova importo o scadenza con sicurezza, l'F24 compare con la scritta **«controlla importo e scadenza»**:
+  basta aprirlo con un doppio clic e correggere. Con il tasto destro → **Apri l'email in Gmail** vedi l'email originale.
+- Controlla all'apertura dell'app, poi ogni 30 minuti e quando premi **Controlla ora**.
+- L'accesso a Gmail è **in sola lettura**. La password di Google non passa mai dall'app: l'accesso si fa nel browser
+  e l'app conserva solo un token nel **Portachiavi** di macOS.
+
+### Prima configurazione (una volta sola)
+
+Google chiede che ogni app che legge Gmail abbia delle proprie credenziali. Sono gratuite e si creano così:
+
+1. Vai su [Google Cloud Console](https://console.cloud.google.com/) con il tuo account Google e crea un progetto
+   (per esempio «Easy F24»).
+2. In **API e servizi → Libreria** cerca **Gmail API** e premi **Abilita**.
+3. Configura la **schermata di consenso OAuth** (nelle versioni più recenti: **Google Auth Platform**):
+   tipo di utente **Esterno**, nome dell'app e la tua email. In **Utenti di test** (o **Pubblico**) aggiungi
+   il tuo indirizzo Gmail.
+4. In **Credenziali → Crea credenziali → ID client OAuth** (o **Client → Crea client**) scegli
+   **App desktop** e scarica il file JSON.
+5. In Easy F24 premi **Collega Gmail…**:
+   1. scrivi l'**email del commercialista**;
+   2. premi **Importa file JSON…** e scegli il file appena scaricato (oppure incolla Client ID e client secret);
+   3. premi **Accedi con Google…**: si apre il browser, scegli il tuo account e consenti l'accesso.
+
+> **Nota sulla durata dell'accesso.** Finché l'app Google è in stato «Test», Google fa scadere l'accesso
+> dopo 7 giorni e Easy F24 chiederà di ricollegarsi. Per evitarlo, nella schermata di consenso premi
+> **Pubblica app** («In produzione»): al successivo accesso Google mostrerà l'avviso «app non verificata»;
+> trattandosi della tua app, scegli **Avanzate → Vai a Easy F24**.
+
+> Dopo un aggiornamento dell'app, macOS può chiedere una volta il permesso di usare la voce
+> «Easy F24 – Gmail» del Portachiavi: scegli **Consenti sempre**.
 
 ## Dove sono salvati i dati
 
@@ -38,6 +81,8 @@ Tutto resta sul Mac, in un file leggibile:
 ```
 
 A ogni apertura dell'app viene fatta una copia di sicurezza in `f24-backup.json`, nella stessa cartella.
+Nella stessa cartella `gmail.json` contiene l'email del commercialista e l'ultimo modulo trovato su Gmail;
+le credenziali di Google stanno invece nel Portachiavi.
 Per fare un backup basta copiare questa cartella.
 
 ## Compilare dal codice sorgente
@@ -71,4 +116,10 @@ Sources/EasyF24/
   F24.swift          il dato F24
   F24Store.swift     elenco degli F24 e salvataggio su file
   Formato.swift      date e importi all'italiana
+  GmailSync.swift    ricerca delle email del commercialista e ultimo modulo trovato
+  GmailAPI.swift     chiamate all'API di Gmail
+  GoogleAuth.swift   accesso a Google (OAuth nel browser) e server locale per il ritorno
+  LettoreF24.swift   importo e scadenza dall'email e dal PDF del modulo
+  FoglioGmail.swift  impostazioni di Gmail e barra in fondo alla finestra
+  Portachiavi.swift  salvataggio delle credenziali nel Portachiavi
 ```

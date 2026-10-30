@@ -3,6 +3,7 @@ import SwiftUI
 /// Finestra principale: a sinistra gli F24 da pagare, a destra quelli già pagati.
 struct ContentView: View {
     @EnvironmentObject private var store: F24Store
+    @EnvironmentObject private var gmail: GmailSync
     @State private var foglio: Foglio?
     @State private var avviso: Avviso?
     @State private var oggi = Date()
@@ -11,42 +12,10 @@ struct ContentView: View {
     private let orologio = Timer.publish(every: 600, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        HStack(spacing: 0) {
-            Colonna(titolo: "Da pagare",
-                    colore: .orange,
-                    elementi: store.daPagare,
-                    messaggioVuoto: "Nessun F24 da pagare.\nPremi «Nuovo F24» per aggiungerne uno.",
-                    accessorio: {
-                        Button(action: { foglio = .nuovo }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "plus")
-                                Text("Nuovo F24")
-                            }
-                        }
-                        .keyboardShortcut("n", modifiers: .command)
-                        .help("Aggiungi un F24 da pagare (⌘N)")
-                    },
-                    riga: { f24 in
-                        RigaDaPagare(f24: f24,
-                                     oggi: oggi,
-                                     onPaga: { foglio = .paga(f24) },
-                                     onModifica: { foglio = .modifica(f24) },
-                                     onElimina: { avviso = .elimina(f24) })
-                    })
-
+        VStack(spacing: 0) {
+            colonne
             Divider()
-
-            Colonna(titolo: "Pagati",
-                    colore: .green,
-                    elementi: store.pagati,
-                    messaggioVuoto: "Ancora nessun F24 pagato.",
-                    accessorio: { EmptyView() },
-                    riga: { f24 in
-                        RigaPagata(f24: f24,
-                                   onModifica: { foglio = .modifica(f24) },
-                                   onRiporta: { store.riportaDaPagare(f24) },
-                                   onElimina: { avviso = .elimina(f24) })
-                    })
+            BarraGmail(gmail: gmail, onImpostazioni: { foglio = .gmail })
         }
         .frame(minWidth: 820, minHeight: 480)
         .background(Color(NSColor.windowBackgroundColor))
@@ -68,6 +37,57 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             oggi = Date()
         }
+        .onAppear {
+            gmail.avvia()
+        }
+    }
+
+    private var colonne: some View {
+        HStack(spacing: 0) {
+            Colonna(titolo: "Da pagare",
+                    colore: .orange,
+                    elementi: store.daPagare,
+                    messaggioVuoto: "Nessun F24 da pagare.\nPremi «Nuovo F24» per aggiungerne uno.",
+                    accessorio: {
+                        Button(action: { foglio = .nuovo }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "plus")
+                                Text("Nuovo F24")
+                            }
+                        }
+                        .keyboardShortcut("n", modifiers: .command)
+                        .help("Aggiungi un F24 da pagare (⌘N)")
+                    },
+                    riga: { f24 in
+                        RigaDaPagare(f24: f24,
+                                     oggi: oggi,
+                                     onPaga: { foglio = .paga(f24) },
+                                     onModifica: { foglio = .modifica(f24) },
+                                     onElimina: { avviso = .elimina(f24) },
+                                     onApriEmail: apriEmail(di: f24))
+                    })
+
+            Divider()
+
+            Colonna(titolo: "Pagati",
+                    colore: .green,
+                    elementi: store.pagati,
+                    messaggioVuoto: "Ancora nessun F24 pagato.",
+                    accessorio: { EmptyView() },
+                    riga: { f24 in
+                        RigaPagata(f24: f24,
+                                   onModifica: { foglio = .modifica(f24) },
+                                   onRiporta: { store.riportaDaPagare(f24) },
+                                   onElimina: { avviso = .elimina(f24) },
+                                   onApriEmail: apriEmail(di: f24))
+                    })
+        }
+    }
+
+    /// Azione "Apri l'email in Gmail" per gli F24 importati da Gmail.
+    private func apriEmail(di f24: F24) -> (() -> Void)? {
+        guard let id = f24.gmailMessageId else { return nil }
+        return { gmail.apriEmail(id) }
     }
 
     @ViewBuilder
@@ -94,6 +114,8 @@ struct ContentView: View {
                                 chiudiFoglio()
                             },
                             onAnnulla: chiudiFoglio)
+        case .gmail:
+            FoglioGmail(gmail: gmail, onChiudi: chiudiFoglio)
         }
     }
 
@@ -121,10 +143,12 @@ enum Foglio: Identifiable {
     case nuovo
     case modifica(F24)
     case paga(F24)
+    case gmail
 
     var id: String {
         switch self {
         case .nuovo: return "nuovo"
+        case .gmail: return "gmail"
         case .modifica(let f24): return "modifica-" + f24.id.uuidString
         case .paga(let f24): return "paga-" + f24.id.uuidString
         }

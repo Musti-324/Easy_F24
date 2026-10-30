@@ -97,6 +97,7 @@ struct FoglioModifica: View {
         f24.descrizione = descrizione.trimmingCharacters(in: .whitespacesAndNewlines)
         f24.importoCentesimi = testoImporto.isEmpty ? nil : Formato.centesimi(da: testoImporto)
         f24.scadenza = calendario.startOfDay(for: scadenza)
+        f24.daVerificare = false
         if f24.isPagato {
             f24.pagatoIl = calendario.startOfDay(for: pagatoIl)
         }

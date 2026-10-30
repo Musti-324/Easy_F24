@@ -3,12 +3,20 @@ import SwiftUI
 @main
 struct EasyF24App: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @StateObject private var store = F24Store()
+    @StateObject private var store: F24Store
+    @StateObject private var gmail: GmailSync
+
+    init() {
+        let store = F24Store()
+        _store = StateObject(wrappedValue: store)
+        _gmail = StateObject(wrappedValue: GmailSync(store: store))
+    }
 
     var body: some Scene {
         WindowGroup("Easy F24") {
             ContentView()
                 .environmentObject(store)
+                .environmentObject(gmail)
                 .environment(\.locale, Formato.locale)
         }
         .commands {
