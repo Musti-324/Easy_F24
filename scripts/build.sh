@@ -18,7 +18,7 @@ APP="$BUILD_DIR/$APP_NAME.app"
 DMG="$BUILD_DIR/Easy_F24.dmg"
 SDK="$(xcrun --sdk macosx --show-sdk-path)"
 
-rm -rf "$APP" "$DMG" "$BUILD_DIR/Easy_F24.zip"
+rm -rf "$APP" "$DMG" "$BUILD_DIR/Easy_F24.zip" "$BUILD_DIR/SHA256SUMS.txt"
 mkdir -p "$BUILD_DIR"
 
 binaries=()
@@ -54,6 +54,9 @@ cp -R "$APP" "$STAGING/"
 ln -s /Applications "$STAGING/Applicazioni"
 hdiutil create -volname "$APP_NAME" -srcfolder "$STAGING" -fs HFS+ -format UDZO -ov -quiet "$DMG"
 rm -rf "$STAGING"
+
+# Impronte SHA-256, da pubblicare con la release per controllare che i file scaricati siano integri.
+(cd "$BUILD_DIR" && shasum -a 256 Easy_F24.dmg Easy_F24.zip > SHA256SUMS.txt)
 
 echo "✓ Fatto: $APP e $DMG"
 echo "  Per installarla apri il .dmg e trascina l'app su Applicazioni."

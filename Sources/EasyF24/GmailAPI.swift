@@ -21,10 +21,18 @@ struct GmailAPI {
     }
 
     func messaggio(_ id: String, fine: @escaping (Result<MessaggioGmail, ErroreGmail>) -> Void) {
+        guard GmailAPI.idValido(id) else {
+            fine(.failure(.risposta("identificativo di messaggio non valido")))
+            return
+        }
         richiesta("/messages/\(id)", parametri: [URLQueryItem(name: "format", value: "full")], fine: fine)
     }
 
     func allegato(messaggio: String, allegato: String, fine: @escaping (Result<Data, ErroreGmail>) -> Void) {
+        guard GmailAPI.idValido(messaggio), GmailAPI.idValido(allegato) else {
+            fine(.failure(.risposta("identificativo di allegato non valido")))
+            return
+        }
         richiesta("/messages/\(messaggio)/attachments/\(allegato)") { (risultato: Result<AllegatoGmail, ErroreGmail>) in
             switch risultato {
             case .failure(let errore):
@@ -41,18 +49,32 @@ struct GmailAPI {
 
     private func richiesta<T: Decodable>(_ percorso: String, parametri: [URLQueryItem] = [],
                                          fine: @escaping (Result<T, ErroreGmail>) -> Void) {
-        var indirizzo = URLComponents(string: GmailAPI.base + percorso)!
+        guard var indirizzo = URLComponents(string: GmailAPI.base + percorso) else {
+            fine(.failure(.risposta("indirizzo non valido")))
+            return
+        }
         if !parametri.isEmpty {
             indirizzo.queryItems = parametri
             // "+" (es. in un indirizzo email) altrimenti verrebbe letto come spazio.
             indirizzo.percentEncodedQuery = indirizzo.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
         }
-        var richiesta = URLRequest(url: indirizzo.url!)
+        guard let url = indirizzo.url, url.scheme == "https", url.host == "gmail.googleapis.com" else {
+            fine(.failure(.risposta("indirizzo non valido")))
+            return
+        }
+        var richiesta = URLRequest(url: url)
         richiesta.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        URLSession.shared.dataTask(with: richiesta) { dati, risposta, errore in
+        Rete.sessione.dataTask(with: richiesta) { dati, risposta, errore in
             let risultato: Result<T, ErroreGmail> = GmailAPI.interpreta(dati: dati, risposta: risposta, errore: errore)
             DispatchQueue.main.async { fine(risultato) }
         }.resume()
+    }
+
+    /// Gli id di Gmail sono fatti solo di lettere, cifre, "-" e "_": altro non finisce nell'indirizzo.
+    static func idValido(_ id: String) -> Bool {
+        !id.isEmpty && id.count <= 1024 && id.unicodeScalars.allSatisfy {
+            CharacterSet.alphanumerics.contains($0) && $0.isASCII || $0 == "-" || $0 == "_"
+        }
     }
 
     private static func interpreta<T: Decodable>(dati: Data?, risposta: URLResponse?, errore: Error?) -> Result<T, ErroreGmail> {
@@ -108,13 +130,27 @@ struct MessaggioGmail: Decodable {
         let dati: Data?
     }
 
+    /// Limiti agli allegati letti, contro email costruite per bloccare o attaccare l'app.
+    static let massimoPDF = 10
+    static let massimaDimensionePDF = 10 * 1024 * 1024
+
     var ricevutoIlMs: Int64 { Int64(internalDate ?? "") ?? 0 }
     var ricevutoIl: Date { Date(timeIntervalSince1970: Double(ricevutoIlMs) / 1000) }
     var oggetto: String { intestazione("Subject") ?? "" }
     var mittente: String { intestazione("From") ?? "" }
 
     func intestazione(_ nome: String) -> String? {
-        payload?.headers?.first { $0.name.lowercased() == nome.lowercased() }?.value
+        intestazioni(nome).first
+    }
+
+    /// Tutte le intestazioni con questo nome, nell'ordine del messaggio (dalla più recente).
+    func intestazioni(_ nome: String) -> [String] {
+        (payload?.headers ?? []).filter { $0.name.lowercased() == nome.lowercased() }.map { $0.value }
+    }
+
+    /// Gmail ha verificato (SPF/DKIM/DMARC) che l'email viene davvero dal dominio di `email`.
+    func autenticato(da email: String) -> Bool {
+        VerificaMittente.autenticato(intestazioni("Authentication-Results"), email: email)
     }
 
     /// Il testo dell'email (preferisce la versione senza formattazione).
@@ -126,11 +162,11 @@ struct MessaggioGmail: Decodable {
         }
         let semplice = testi("text/plain")
         if !semplice.isEmpty {
-            return semplice.joined(separator: "\n")
+            return String(semplice.joined(separator: "\n").prefix(LettoreF24.massimaLunghezzaTesto))
         }
         let html = testi("text/html")
         if !html.isEmpty {
-            return LettoreF24.togliHTML(html.joined(separator: "\n"))
+            return LettoreF24.togliHTML(String(html.joined(separator: "\n").prefix(LettoreF24.massimaLunghezzaTesto)))
         }
         return snippet ?? ""
     }
@@ -139,10 +175,14 @@ struct MessaggioGmail: Decodable {
         (payload?.tutte ?? []).compactMap { parte in
             let nome = parte.filename ?? ""
             let ePDF = parte.mimeType?.lowercased() == "application/pdf" || nome.lowercased().hasSuffix(".pdf")
+            let dimensione = parte.body?.size ?? 0
+            guard ePDF, dimensione <= MessaggioGmail.massimaDimensionePDF else { return nil }
             let dati = parte.body?.data.flatMap(Base64URL.dati)
-            guard ePDF, parte.body?.attachmentId != nil || dati != nil else { return nil }
+            guard parte.body?.attachmentId != nil || dati != nil else { return nil }
             return PDF(nome: nome.isEmpty ? "modulo.pdf" : nome, attachmentId: parte.body?.attachmentId, dati: dati)
         }
+        .prefix(MessaggioGmail.massimoPDF)
+        .map { $0 }
     }
 }
 
@@ -153,6 +193,7 @@ struct ParteGmail: Decodable {
     }
     struct Corpo: Decodable {
         let attachmentId: String?
+        let size: Int?
         let data: String?
     }
 

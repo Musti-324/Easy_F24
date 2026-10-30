@@ -92,13 +92,16 @@ final class GoogleAuth {
             return
         }
         annullaAccesso()
-        let verificatore = GoogleAuth.casuale(lunghezza: 64)
+        // PKCE: anche se qualcuno intercettasse il codice di ritorno, senza il verificatore non può usarlo.
+        guard let verificatore = GoogleAuth.casuale(lunghezza: 64), let stato = GoogleAuth.casuale(lunghezza: 32) else {
+            fine(.failure(.accessoNegato("generatore di numeri casuali non disponibile")))
+            return
+        }
         let sfida = GoogleAuth.base64url(Data(SHA256.hash(data: Data(verificatore.utf8))))
-        let stato = GoogleAuth.casuale(lunghezza: 32)
         var redirect = ""
         let ricevitore = RicevitoreRedirect()
         self.ricevitore = ricevitore
-        ricevitore.avvia(pronto: { risultato in
+        ricevitore.avvia(statoAtteso: stato, pronto: { risultato in
             switch risultato {
             case .failure(let errore):
                 fine(.failure(.rete(errore.localizedDescription)))
@@ -116,18 +119,24 @@ final class GoogleAuth {
                     URLQueryItem(name: "code_challenge_method", value: "S256"),
                     URLQueryItem(name: "state", value: stato),
                 ]
-                NSWorkspace.shared.open(indirizzo.url!)
+                if let url = indirizzo.url {
+                    NSWorkspace.shared.open(url)
+                } else {
+                    fine(.failure(.accessoNegato("Client ID non valido")))
+                }
             }
         }, risposta: { [weak self] parametri in
+            // Arrivano qui solo le richieste con lo "state" giusto: le altre il ricevitore le scarta.
             guard let self = self else { return }
             self.annullaAccesso()
-            if let errore = parametri["error"] {
-                fine(.failure(.accessoNegato(errore)))
-            } else if let codice = parametri["code"], parametri["state"] == stato {
+            if let codice = parametri["code"] {
                 self.scambia(codice: codice, verificatore: verificatore, redirect: redirect, fine: fine)
             } else {
-                fine(.failure(.accessoNegato("risposta inattesa")))
+                fine(.failure(.accessoNegato(parametri["error"] ?? "risposta inattesa")))
             }
+        }, scaduto: { [weak self] in
+            self?.ricevitore = nil
+            fine(.failure(.accessoNegato("tempo scaduto, riprova")))
         })
     }
 
@@ -179,7 +188,7 @@ final class GoogleAuth {
             richiesta.httpMethod = "POST"
             richiesta.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
             richiesta.httpBody = GoogleAuth.codificaForm(["token": token])
-            URLSession.shared.dataTask(with: richiesta).resume()
+            Rete.sessione.dataTask(with: richiesta).resume()
         }
         credenziali?.refreshToken = nil
         dimenticaAccessToken()
@@ -236,7 +245,7 @@ final class GoogleAuth {
         richiesta.httpMethod = "POST"
         richiesta.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         richiesta.httpBody = GoogleAuth.codificaForm(parametri)
-        URLSession.shared.dataTask(with: richiesta) { dati, _, errore in
+        Rete.sessione.dataTask(with: richiesta) { dati, _, errore in
             let risultato: Result<[String: Any], ErroreGmail>
             if let errore = errore {
                 risultato = .failure(.rete(errore.localizedDescription))
@@ -269,10 +278,11 @@ final class GoogleAuth {
 
     // MARK: - Utilità
 
-    private static func casuale(lunghezza: Int) -> String {
-        let caratteri = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+    /// Testo casuale crittograficamente sicuro (64 caratteri possibili: nessuno è favorito).
+    private static func casuale(lunghezza: Int) -> String? {
+        let caratteri = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
         var byte = [UInt8](repeating: 0, count: lunghezza)
-        _ = SecRandomCopyBytes(kSecRandomDefault, lunghezza, &byte)
+        guard SecRandomCopyBytes(kSecRandomDefault, lunghezza, &byte) == errSecSuccess else { return nil }
         return String(byte.map { caratteri[Int($0) % caratteri.count] })
     }
 
@@ -293,13 +303,20 @@ final class GoogleAuth {
     }
 }
 
-/// Piccolo server HTTP su 127.0.0.1 che riceve il ritorno di Google dopo l'accesso.
+/// Piccolo server HTTP su 127.0.0.1 (raggiungibile solo da questo Mac) che riceve
+/// il ritorno di Google dopo l'accesso. Accetta solo la risposta con lo "state" giusto
+/// e si chiude da solo dopo 5 minuti.
 final class RicevitoreRedirect {
+    static let durataMassima: TimeInterval = 5 * 60
     private var listener: NWListener?
 
-    /// `pronto` riceve la porta su cui ascolta; `risposta` i parametri rimandati da Google.
-    func avvia(pronto: @escaping (Result<UInt16, Error>) -> Void,
-               risposta: @escaping ([String: String]) -> Void) {
+    /// `pronto` riceve la porta su cui ascolta; `risposta` i parametri rimandati da Google;
+    /// `scaduto` viene chiamato se l'accesso non arriva entro `durataMassima`.
+    func avvia(statoAtteso: String,
+               durata: TimeInterval = RicevitoreRedirect.durataMassima,
+               pronto: @escaping (Result<UInt16, Error>) -> Void,
+               risposta: @escaping ([String: String]) -> Void,
+               scaduto: @escaping () -> Void = {}) {
         let parametri = NWParameters.tcp
         parametri.requiredLocalEndpoint = NWEndpoint.hostPort(host: .ipv4(.loopback), port: .any)
         let listener: NWListener
@@ -328,9 +345,14 @@ final class RicevitoreRedirect {
             }
         }
         listener.newConnectionHandler = { connessione in
-            RicevitoreRedirect.gestisci(connessione, risposta: risposta)
+            RicevitoreRedirect.gestisci(connessione, statoAtteso: statoAtteso, risposta: risposta)
         }
         listener.start(queue: .main)
+        DispatchQueue.main.asyncAfter(deadline: .now() + durata) { [weak self, weak listener] in
+            guard let self = self, let listener = listener, self.listener === listener else { return }
+            self.ferma()
+            scaduto()
+        }
     }
 
     func ferma() {
@@ -338,23 +360,26 @@ final class RicevitoreRedirect {
         listener = nil
     }
 
-    private static func gestisci(_ connessione: NWConnection, risposta: @escaping ([String: String]) -> Void) {
+    private static func gestisci(_ connessione: NWConnection, statoAtteso: String,
+                                 risposta: @escaping ([String: String]) -> Void) {
         connessione.start(queue: .main)
         connessione.receive(minimumIncompleteLength: 1, maximumLength: 16_384) { dati, _, _, _ in
             // Prima riga della richiesta: "GET /?code=...&state=... HTTP/1.1"
             let richiesta = dati.flatMap { String(data: $0, encoding: .utf8) } ?? ""
             let percorso = richiesta.split(separator: " ").dropFirst().first.map(String.init) ?? "/"
             let valori = parametri(da: percorso)
-            let utile = valori["code"] != nil || valori["error"] != nil
+            // Senza lo "state" giusto la richiesta non viene da Google (es. un altro programma): si scarta.
+            let utile = valori["state"] == statoAtteso && (valori["code"] != nil || valori["error"] != nil)
             let http: String
             if utile {
                 let corpo = pagina(valori["code"] != nil
                     ? "Collegamento a Gmail riuscito. Puoi chiudere questa pagina e tornare a Easy F24."
                     : "Accesso annullato. Puoi chiudere questa pagina e tornare a Easy F24.")
                 http = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n"
+                    + "Cache-Control: no-store\r\nReferrer-Policy: no-referrer\r\n"
                     + "Content-Length: \(corpo.utf8.count)\r\nConnection: close\r\n\r\n" + corpo
             } else {
-                http = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                http = "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
             }
             connessione.send(content: http.data(using: .utf8), completion: .contentProcessed { _ in
                 connessione.cancel()

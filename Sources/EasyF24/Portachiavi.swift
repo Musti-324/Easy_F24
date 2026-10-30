@@ -20,6 +20,8 @@ enum Portachiavi {
         var nuovo = query
         nuovo[kSecValueData as String] = dati
         nuovo[kSecAttrLabel as String] = servizio
+        // Leggibile solo a Mac sbloccato.
+        nuovo[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlocked
         return SecItemAdd(nuovo as CFDictionary, nil) == errSecSuccess
     }
 

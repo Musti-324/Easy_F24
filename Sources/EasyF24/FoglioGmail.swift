@@ -176,7 +176,9 @@ struct FoglioGmail: View {
             Text("4. Crea le credenziali: «ID client OAuth» di tipo «App desktop», poi scarica il file JSON.")
             Text("5. Torna qui e premi «Importa file JSON…».")
             Button("Apri Google Cloud Console") {
-                NSWorkspace.shared.open(URL(string: "https://console.cloud.google.com/apis/credentials")!)
+                if let url = URL(string: "https://console.cloud.google.com/apis/credentials") {
+                    NSWorkspace.shared.open(url)
+                }
             }
         }
         .fixedSize(horizontal: false, vertical: true)
@@ -227,10 +229,15 @@ struct BarraGmail: View {
             Image(systemName: "envelope")
                 .foregroundColor(.secondary)
             Text(descrizione)
-                .foregroundColor(gmail.errore == nil ? .secondary : .orange)
+                .foregroundColor(gmail.errore == nil && gmail.emailIgnorate == 0 ? .secondary : .orange)
                 .lineLimit(1)
                 .truncationMode(.tail)
             Spacer()
+            if gmail.emailIgnorate > 0 {
+                Image(systemName: "exclamationmark.shield")
+                    .foregroundColor(.orange)
+                    .help("Email che sembrano del commercialista ma che Gmail non ha potuto verificare (SPF/DKIM/DMARC): possono essere false e non sono state importate. Se sono vere, aggiungi l'F24 a mano.")
+            }
             if gmail.inControllo {
                 ProgressView()
                     .controlSize(.small)

@@ -10,6 +10,10 @@ enum LettoreF24 {
         let dati: Data
     }
 
+    /// Oltre questa lunghezza i testi non vengono analizzati (evita rallentamenti con email enormi).
+    static let massimaLunghezzaTesto = 200_000
+    static let massimaLunghezzaDescrizione = 200
+
     /// Un F24 per ogni PDF che sembra un modulo F24; se non ce ne sono, un F24 dall'email.
     static func moduli(messaggioId: String, oggetto: String, corpo: String, ricevutoIl: Date, pdf: [PDF]) -> [F24] {
         let conTesto = pdf.map { (nome: $0.nome, testo: testo(pdf: $0.dati)) }
@@ -45,10 +49,13 @@ enum LettoreF24 {
     // MARK: - Testi
 
     static func testo(pdf dati: Data) -> String? {
-        guard let testo = PDFDocument(data: dati)?.string,
+        guard dati.count <= MessaggioGmail.massimaDimensionePDF,
+              let documento = PDFDocument(data: dati),
+              !documento.isLocked,
+              let testo = documento.string,
               !testo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else { return nil }
-        return testo
+        return String(testo.prefix(massimaLunghezzaTesto))
     }
 
     static func sembraF24(testo: String?, nomeFile: String) -> Bool {
@@ -62,8 +69,9 @@ enum LettoreF24 {
     /// L'oggetto senza "R:", "I:", "Fwd:" davanti.
     static func descrizione(oggetto: String) -> String {
         let pulito = sostituisci(#"^\s*((re|r|i|fw|fwd|inoltro)\s*:\s*)+"#, in: oggetto, con: "")
+            .components(separatedBy: .controlCharacters).joined(separator: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        return pulito.isEmpty ? "F24 da Gmail" : pulito
+        return pulito.isEmpty ? "F24 da Gmail" : String(pulito.prefix(massimaLunghezzaDescrizione))
     }
 
     static func togliHTML(_ html: String) -> String {

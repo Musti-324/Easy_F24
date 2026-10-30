@@ -88,9 +88,7 @@ final class F24Store: ObservableObject {
             let dati = try Data(contentsOf: fileURL)
             elementi = try F24Store.decoder.decode(Archivio.self, from: dati).f24
             // Copia di sicurezza di com'era l'archivio all'apertura dell'app.
-            let copia = cartella.appendingPathComponent("f24-backup.json")
-            try? fm.removeItem(at: copia)
-            try? fm.copyItem(at: fileURL, to: copia)
+            try? FileRiservato.scrivi(dati, in: cartella.appendingPathComponent("f24-backup.json"))
         } catch {
             // Non sovrascriviamo un file che non riusciamo a leggere: lo mettiamo da parte.
             let destinazione = cartella.appendingPathComponent("f24-illeggibile-\(Int(Date().timeIntervalSince1970)).json")
@@ -107,11 +105,8 @@ final class F24Store: ObservableObject {
     private func salva() {
         guard !salvataggioBloccato else { return }
         do {
-            try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(),
-                                                    withIntermediateDirectories: true,
-                                                    attributes: nil)
             let dati = try F24Store.encoder.encode(Archivio(versione: 1, f24: elementi))
-            try dati.write(to: fileURL, options: .atomic)
+            try FileRiservato.scrivi(dati, in: fileURL)
         } catch {
             errore = "Non è stato possibile salvare gli F24: \(error.localizedDescription)"
         }
@@ -129,4 +124,16 @@ final class F24Store: ObservableObject {
         decoder.dateDecodingStrategy = .iso8601
         return decoder
     }()
+}
+
+/// Scrittura dei file dell'app leggibili solo dall'utente: cartella 0700, file 0600.
+enum FileRiservato {
+    static func scrivi(_ dati: Data, in url: URL) throws {
+        let fm = FileManager.default
+        let cartella = url.deletingLastPathComponent()
+        try fm.createDirectory(at: cartella, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: cartella.path)
+        try dati.write(to: url, options: .atomic)
+        try? fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+    }
 }

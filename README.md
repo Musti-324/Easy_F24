@@ -72,6 +72,47 @@ Google chiede che ogni app che legge Gmail abbia delle proprie credenziali. Sono
 > Dopo un aggiornamento dell'app, macOS può chiedere una volta il permesso di usare la voce
 > «Easy F24 – Gmail» del Portachiavi: scegli **Consenti sempre**.
 
+## Sicurezza
+
+**Cosa fa l'app per proteggerti**
+
+- **Email false.** Il mittente di un'email si può falsificare. Easy F24 importa un'email solo se:
+  l'indirizzo vero (non il nome visualizzato) è esattamente quello del commercialista, l'oggetto contiene
+  «MOD. F24» e Gmail ha verificato che viene davvero dal suo dominio (SPF, DKIM o DMARC).
+  Le email che non superano la verifica non vengono importate e sono segnalate in basso con uno scudo arancione.
+- **Accesso a Google.** Si fa nel browser (OAuth con PKCE e controllo dello «state»): l'app non vede mai la password.
+  Il permesso è di sola lettura e il token sta nel Portachiavi. **Scollega** revoca il permesso; si può revocare
+  anche da [myaccount.google.com/permissions](https://myaccount.google.com/permissions).
+- **Server locale per l'accesso.** Ascolta solo su `127.0.0.1` (non è raggiungibile da altri computer),
+  accetta solo la risposta di Google e si chiude da solo dopo 5 minuti.
+- **Rete.** Solo HTTPS verso Google, senza cache su disco né cookie: email, allegati e token non restano nella cache.
+- **Allegati.** Vengono letti solo PDF (al massimo 10 per email e 10 MB ciascuno); le email in HTML non vengono
+  mai mostrate, quindi niente immagini remote o pixel traccianti.
+- **File.** La cartella dei dati è leggibile solo dal tuo utente (permessi 700, file 600).
+- **Nessuna libreria esterna**: solo framework di Apple.
+- **Download integro.** Ogni release riporta l'impronta SHA-256 dei file. Prima di aprire il .dmg puoi controllarla nel Terminale:
+
+  ```bash
+  shasum -a 256 ~/Downloads/Easy_F24.dmg
+  ```
+
+**Cosa resta da sapere**
+
+- **Controlla sempre l'F24 prima di pagarlo.** La lista aiuta a non dimenticare le scadenze, ma importo e codici
+  vanno verificati nel PDF. Un F24 si paga con il modello F24 (home banking, ufficio postale), mai con un bonifico
+  a un IBAN: se un'email chiede altro o mette fretta, telefona al commercialista.
+- **macOS Big Sur non riceve più aggiornamenti di sicurezza da Apple.** È il rischio principale del Mac del 2014:
+  falle note del sistema (per esempio nella lettura di PDF o nel browser) restano aperte. Consigli: attiva
+  **FileVault** (i dati dell'app non sono cifrati di per sé), attiva il firewall, usa un browser ancora aggiornato,
+  non aprire allegati inattesi e, se possibile, usa un utente non amministratore.
+- **L'app non è firmata con un certificato Apple (Developer ID) né notarizzata**: per questo macOS chiede conferma
+  al primo avvio e non può garantire chi l'ha prodotta. Scarica solo dalla pagina Releases e controlla l'impronta SHA-256.
+- **L'app non è in sandbox**: se un PDF costruito per attaccare macOS venisse letto, avrebbe gli stessi permessi del tuo
+  utente. Per questo vengono letti solo PDF di email verificate del commercialista.
+- Se il commercialista usa una casella di un provider condiviso (per esempio @libero.it), la verifica conferma il
+  provider, non la singola casella. Se invece le sue email vere vengono segnalate come «non verificate», il suo dominio
+  non è configurato bene (SPF/DKIM): aggiungi l'F24 a mano e avvisalo.
+
 ## Dove sono salvati i dati
 
 Tutto resta sul Mac, in un file leggibile:
@@ -122,4 +163,6 @@ Sources/EasyF24/
   LettoreF24.swift   importo e scadenza dall'email e dal PDF del modulo
   FoglioGmail.swift  impostazioni di Gmail e barra in fondo alla finestra
   Portachiavi.swift  salvataggio delle credenziali nel Portachiavi
+  VerificaMittente.swift  controlli contro le email false (indirizzo, SPF/DKIM/DMARC)
+  Rete.swift         connessione verso Google senza cache né cookie
 ```

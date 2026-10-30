@@ -3,3 +3,6 @@
 /.build/
 /.swiftpm/
 *.xcodeproj/xcuserdata/
+# Credenziali Google scaricate da Cloud Console: non vanno mai nel repository
+client_secret*.json
+*.p12

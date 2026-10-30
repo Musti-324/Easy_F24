@@ -43,6 +43,8 @@ final class GmailSync: ObservableObject {
     /// Esito dell'ultimo controllo, es. "Aggiunto 1 nuovo F24".
     @Published private(set) var esito: String?
     @Published private(set) var errore: String?
+    /// Email con mittente e oggetto giusti ma non verificate da Gmail (possibili falsi): non importate.
+    @Published private(set) var emailIgnorate = 0
 
     var ultimoModulo: UltimoModulo? { impostazioni.ultimoModulo }
     var emailCommercialistaValida: Bool { GmailSync.emailValida(impostazioni.emailCommercialista) }
@@ -179,12 +181,15 @@ final class GmailSync: ObservableObject {
 
     /// Confronta i messaggi trovati con l'ultimo modulo salvato e aggiunge quelli nuovi.
     private func importa(_ messaggi: [MessaggioGmail], con api: GmailAPI) {
-        // Gmail cerca per parole: qui si controlla che mittente e oggetto siano proprio quelli giusti.
-        let validi = messaggi
-            .filter { GmailSync.eDelCommercialista($0, email: impostazioni.emailCommercialista) }
-            .sorted { $0.ricevutoIlMs < $1.ricevutoIlMs }
+        // Gmail cerca per parole: qui si controlla che indirizzo e oggetto siano proprio quelli giusti
+        // e che l'email sia autentica, perché il mittente di un'email si può falsificare.
+        let email = impostazioni.emailCommercialista
+        let candidati = messaggi.filter { GmailSync.eDelCommercialista($0, email: email) }
+        let validi = candidati.filter { $0.autenticato(da: email) }.sorted { $0.ricevutoIlMs < $1.ricevutoIlMs }
+        let ultimoMs = impostazioni.ultimoModulo?.ricevutoIlMs ?? 0
+        let ignorate = candidati.filter { !$0.autenticato(da: email) && $0.ricevutoIlMs > ultimoMs }.count
         guard let piuRecente = validi.last else {
-            termina(nuovi: 0)
+            termina(nuovi: 0, ignorate: ignorate)
             return
         }
         var nuovi: [MessaggioGmail]
@@ -212,7 +217,7 @@ final class GmailSync: ObservableObject {
                                                                   oggetto: piuRecente.oggetto)
                     self.salva()
                 }
-                self.termina(nuovi: aggiunti.count)
+                self.termina(nuovi: aggiunti.count, ignorate: ignorate)
             }
         }
     }
@@ -224,7 +229,14 @@ final class GmailSync: ObservableObject {
                 fatto(.success(LettoreF24.PDF(nome: allegato.nome, dati: dati)))
             } else if let id = allegato.attachmentId {
                 api.allegato(messaggio: messaggio.id, allegato: id) { risultato in
-                    fatto(risultato.map { LettoreF24.PDF(nome: allegato.nome, dati: $0) })
+                    switch risultato {
+                    case .failure(let errore):
+                        fatto(.failure(errore))
+                    case .success(let dati) where dati.count > MessaggioGmail.massimaDimensionePDF:
+                        fatto(.failure(.risposta("allegato troppo grande")))
+                    case .success(let dati):
+                        fatto(.success(LettoreF24.PDF(nome: allegato.nome, dati: dati)))
+                    }
                 }
             } else {
                 fatto(.failure(.risposta("allegato senza contenuto")))
@@ -237,9 +249,11 @@ final class GmailSync: ObservableObject {
         }
     }
 
+    /// Indirizzo del mittente identico a quello del commercialista (non basta che compaia nel nome)
+    /// e almeno "MOD. F24" nell'oggetto.
     static func eDelCommercialista(_ messaggio: MessaggioGmail, email: String) -> Bool {
         let oggettoGiusto = messaggio.oggetto.range(of: #"MOD\.\s*F24"#, options: [.regularExpression, .caseInsensitive]) != nil
-        return oggettoGiusto && messaggio.mittente.lowercased().contains(email.lowercased())
+        return oggettoGiusto && VerificaMittente.indirizzo(messaggio.mittente) == email.lowercased()
     }
 
     static func emailValida(_ email: String) -> Bool {
@@ -263,13 +277,19 @@ final class GmailSync: ObservableObject {
         }
     }
 
-    private func termina(nuovi: Int) {
+    private func termina(nuovi: Int, ignorate: Int) {
         inControllo = false
         ultimoControllo = Date()
+        emailIgnorate = ignorate
         switch nuovi {
         case 0: esito = "nessun nuovo F24"
         case 1: esito = "aggiunto 1 nuovo F24"
         default: esito = "aggiunti \(nuovi) nuovi F24"
+        }
+        if ignorate > 0 {
+            esito = (esito ?? "") + (ignorate == 1
+                ? " · 1 email ignorata: mittente non verificato"
+                : " · \(ignorate) email ignorate: mittente non verificato")
         }
     }
 
@@ -285,10 +305,8 @@ final class GmailSync: ObservableObject {
     // MARK: - File
 
     private func salva() {
-        try? FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(),
-                                                 withIntermediateDirectories: true, attributes: nil)
         if let dati = try? GmailSync.encoder.encode(impostazioni) {
-            try? dati.write(to: fileURL, options: .atomic)
+            try? FileRiservato.scrivi(dati, in: fileURL)
         }
     }
 
