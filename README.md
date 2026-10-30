@@ -24,7 +24,7 @@ Un gestionale semplicissimo per Mac per tenere traccia degli **F24**:
 | Cosa vuoi fare | Come |
 | --- | --- |
 | Aggiungere un F24 | Pulsante **Nuovo F24** (oppure ⌘N): descrizione, importo (facoltativo) e scadenza |
-| Segnare un F24 come pagato | Pulsante **Segna pagato**, poi scegli la data del pagamento (di default oggi) |
+| Segnare un F24 come pagato | Pulsante **Segna pagato**, poi la data del pagamento (di default oggi): clic sul campo data per aprire il calendario |
 | Modificare un F24 | Doppio clic sulla scheda, oppure tasto destro → **Modifica…** |
 | Annullare un pagamento | Tasto destro su un F24 pagato → **Riporta tra i da pagare** |
 | Eliminare un F24 | Tasto destro → **Elimina…** |
@@ -164,6 +164,7 @@ Sources/EasyF24/
   ContentView.swift  finestra principale con le due colonne
   Righe.swift        schede "da pagare" e "pagato"
   Fogli.swift        finestre per aggiungere/modificare e per segnare come pagato
+  Calendario.swift   campo data a tendina con il calendario grande
   F24.swift          il dato F24
   F24Store.swift     elenco degli F24 e salvataggio su file
   Formato.swift      date e importi all'italiana

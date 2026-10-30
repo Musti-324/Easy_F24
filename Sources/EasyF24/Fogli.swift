@@ -59,20 +59,14 @@ struct FoglioModifica: View {
                 }
             }
 
-            HStack(alignment: .top, spacing: 24) {
+            VStack(alignment: .leading, spacing: 4) {
+                Etichetta("Scadenza")
+                CampoData(data: $scadenza)
+            }
+            if giaPagato {
                 VStack(alignment: .leading, spacing: 4) {
-                    Etichetta("Scadenza")
-                    DatePicker("Scadenza", selection: $scadenza, displayedComponents: .date)
-                        .labelsHidden()
-                        .datePickerStyle(GraphicalDatePickerStyle())
-                }
-                if giaPagato {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Etichetta("Pagato il")
-                        DatePicker("Pagato il", selection: $pagatoIl, displayedComponents: .date)
-                            .labelsHidden()
-                            .datePickerStyle(GraphicalDatePickerStyle())
-                    }
+                    Etichetta("Pagato il")
+                    CampoData(data: $pagatoIl, segnata: scadenza)
                 }
             }
 
@@ -129,9 +123,7 @@ struct FoglioPagamento: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Etichetta("Data del pagamento")
-                DatePicker("Data del pagamento", selection: $data, displayedComponents: .date)
-                    .labelsHidden()
-                    .datePickerStyle(GraphicalDatePickerStyle())
+                CampoData(data: $data, segnata: f24.scadenza)
             }
 
             HStack {
