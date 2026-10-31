@@ -446,5 +446,61 @@ verifica(dicembre.count == 42 && cal.isDate(dicembre[0], inSameDayAs: giorno(30,
 verifica(CalendarioMese.giorni(del: giorno(10, 3, 2026)).allSatisfy { cal.component(.hour, from: $0) == 0 }, "cambio dell'ora legale: caselle a mezzanotte")
 verifica(CalendarioMese.nomiGiorni == ["LUN", "MAR", "MER", "GIO", "VEN", "SAB", "DOM"], "settimana da lunedì, nomi in italiano")
 
+print("— Analisi del PDF")
+let analisiStandard = AnalisiPDF(.init(nome: "F24_IMU.pdf", dati: pdfIMU))
+verifica(analisiStandard.pagine == 1 && analisiStandard.haTesto && analisiStandard.lettura?.saldo?.centesimi == 125000,
+         "PDF standard: testo leggibile e saldo trovato")
+verifica(analisiStandard.righe.contains { $0.testo.contains("SALDO FINALE") && (20...28).contains($0.y) },
+         "riga «SALDO FINALE» con la sua posizione (y ≈ 24% dal basso)")
+verifica(!analisiStandard.resoconto.contains("RSSMRA") && !analisiStandard.resoconto.contains("03/04/1970") && !analisiStandard.resoconto.contains("ROSSI"),
+         "nel resoconto non c'è la parte alta con nome, codice fiscale e data di nascita")
+// Modulo compilabile: l'importo sta in un campo del modulo, non nel testo della pagina.
+let compilabile: Data = {
+    let documento = PDFDocument(data: pdf([[("MODELLO F24", 40, 805), ("SALDO FINALE", 300, 200), ("EURO +", 400, 200)]]))!
+    let campo = PDFAnnotation(bounds: CGRect(x: 460, y: 195, width: 90, height: 16), forType: .widget, withProperties: nil)
+    campo.widgetFieldType = .text
+    campo.fieldName = "saldo_finale"
+    campo.widgetStringValue = "528,00"
+    documento.page(at: 0)!.addAnnotation(campo)
+    return documento.dataRepresentation()!
+}()
+let analisiCampi = AnalisiPDF(.init(nome: "F24NoCalc.pdf", dati: compilabile))
+verifica(analisiCampi.campi.contains { $0.nome == "saldo_finale" && $0.valore == "528,00" }, "importo in un campo compilabile: mostrato tra i campi del modulo")
+verifica(analisiCampi.resoconto.contains("saldo finale NON trovato") && analisiCampi.resoconto.contains("«saldo_finale» = «528,00»"),
+         "il resoconto spiega che il testo non basta e mostra il campo")
+let soloImmagine: Data = {
+    let dati = NSMutableData()
+    var box = CGRect(x: 0, y: 0, width: 595, height: 842)
+    let ctx = CGContext(consumer: CGDataConsumer(data: dati as CFMutableData)!, mediaBox: &box, nil)!
+    ctx.beginPDFPage(nil)
+    ctx.setFillColor(gray: 0.3, alpha: 1)
+    ctx.fill(CGRect(x: 40, y: 180, width: 500, height: 40))
+    ctx.endPDFPage()
+    ctx.closePDF()
+    return dati as Data
+}()
+let analisiImmagine = AnalisiPDF(.init(nome: "scansione.pdf", dati: soloImmagine))
+verifica(!analisiImmagine.haTesto && analisiImmagine.righe.isEmpty && analisiImmagine.resoconto.contains("NO (è un'immagine o una scansione)"),
+         "PDF senza testo (scansione): lo dice chiaramente")
+verifica(AnalisiPDF(.init(nome: "x.pdf", dati: Data("non è un pdf".utf8))).resoconto.contains("non si apre come PDF"), "file non PDF: segnalato")
+
+GmailFinto.refreshScaduto = false
+let authAnalisi = GoogleAuth(servizioPortachiavi: nil, credenziali: CredenzialiGoogle(clientId: "id", clientSecret: "secret", refreshToken: "refresh"))
+let gmailAnalisi = GmailSync(store: F24Store(fileURL: URL(fileURLWithPath: "\(cartella)/analisi/f24.json")), auth: authAnalisi)
+var analisiGmail: Result<[AnalisiPDF], ErroreGmail>?
+gmailAnalisi.analizzaPDF(di: F24(descrizione: "IMU", scadenza: Date(), gmailMessageId: "imu")) { analisiGmail = $0 }
+attendi { analisiGmail == nil }
+if case .success(let elenco)? = analisiGmail {
+    verifica(elenco.count == 1 && elenco[0].nome == "F24_IMU.pdf" && elenco[0].lettura?.saldo?.centesimi == 125000,
+             "dal Gmail simulato: allegato scaricato in memoria e analizzato")
+} else {
+    verifica(false, "dal Gmail simulato: \(String(describing: analisiGmail))")
+}
+var senzaGmail: Result<[AnalisiPDF], ErroreGmail>?
+gmailAnalisi.analizzaPDF(di: F24(descrizione: "a mano", scadenza: Date())) { senzaGmail = $0 }
+verifica({ if case .failure? = senzaGmail { return true } else { return false } }(), "F24 inserito a mano: niente da analizzare")
+let fileTemporanei = (try? FileManager.default.contentsOfDirectory(atPath: NSTemporaryDirectory())) ?? []
+verifica(!fileTemporanei.contains { $0.hasSuffix(".pdf") }, "nessun PDF scritto nella cartella temporanea")
+
 print(falliti == 0 ? "\nTUTTO OK (\(superati) controlli)" : "\n\(falliti) VERIFICHE FALLITE su \(superati + falliti)")
 exit(falliti == 0 ? 0 : 1)

@@ -66,7 +66,8 @@ struct ContentView: View {
                                      onPaga: { foglio = .paga(f24) },
                                      onModifica: { foglio = .modifica(f24) },
                                      onElimina: { avviso = .elimina(f24) },
-                                     onApriEmail: apriEmail(di: f24))
+                                     onApriEmail: apriEmail(di: f24),
+                                     onAnalizza: analizza(f24))
                     })
 
             Divider()
@@ -83,12 +84,19 @@ struct ContentView: View {
                                    onModifica: { foglio = .modifica(f24) },
                                    onRiporta: { store.riportaDaPagare(f24) },
                                    onElimina: { avviso = .elimina(f24) },
-                                   onApriEmail: apriEmail(di: f24))
+                                   onApriEmail: apriEmail(di: f24),
+                                   onAnalizza: analizza(f24))
                     })
         }
     }
 
     /// Azione "Apri l'email in Gmail" per gli F24 importati da Gmail.
+    /// Azione "Analizza il PDF da Gmail" per gli F24 importati da Gmail.
+    private func analizza(_ f24: F24) -> (() -> Void)? {
+        guard f24.gmailMessageId != nil else { return nil }
+        return { foglio = .analisi(f24) }
+    }
+
     private func apriEmail(di f24: F24) -> (() -> Void)? {
         guard let id = f24.gmailMessageId else { return nil }
         return { gmail.apriEmail(id) }
@@ -120,6 +128,8 @@ struct ContentView: View {
                             onAnnulla: chiudiFoglio)
         case .gmail:
             FoglioGmail(gmail: gmail, onChiudi: chiudiFoglio)
+        case .analisi(let f24):
+            FoglioAnalisi(gmail: gmail, f24: f24, onChiudi: chiudiFoglio)
         }
     }
 
@@ -148,11 +158,13 @@ enum Foglio: Identifiable {
     case modifica(F24)
     case paga(F24)
     case gmail
+    case analisi(F24)
 
     var id: String {
         switch self {
         case .nuovo: return "nuovo"
         case .gmail: return "gmail"
+        case .analisi(let f24): return "analisi-" + f24.id.uuidString
         case .modifica(let f24): return "modifica-" + f24.id.uuidString
         case .paga(let f24): return "paga-" + f24.id.uuidString
         }

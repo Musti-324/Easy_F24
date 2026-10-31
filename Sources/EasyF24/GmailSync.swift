@@ -311,6 +311,17 @@ final class GmailSync: ObservableObject {
 
     private static func leggiF24(da messaggio: MessaggioGmail, con api: GmailAPI,
                                  fine: @escaping (Result<[F24], ErroreGmail>) -> Void) {
+        scaricaPDF(di: messaggio, con: api) { risultato in
+            fine(risultato.map { pdf in
+                LettoreF24.moduli(messaggioId: messaggio.id, oggetto: messaggio.oggetto, corpo: messaggio.testo,
+                                  ricevutoIl: messaggio.ricevutoIl, pdf: pdf)
+            })
+        }
+    }
+
+    /// Scarica gli allegati PDF di un messaggio, solo in memoria (non vengono salvati su disco).
+    private static func scaricaPDF(di messaggio: MessaggioGmail, con api: GmailAPI,
+                                   fine: @escaping (Result<[LettoreF24.PDF], ErroreGmail>) -> Void) {
         inSequenza(messaggio.allegatiPDF, passo: { (allegato: MessaggioGmail.PDF, fatto: @escaping (Result<LettoreF24.PDF, ErroreGmail>) -> Void) in
             if let dati = allegato.dati {
                 fatto(.success(LettoreF24.PDF(nome: allegato.nome, dati: dati)))
@@ -328,11 +339,36 @@ final class GmailSync: ObservableObject {
             } else {
                 fatto(.failure(.risposta("allegato senza contenuto")))
             }
-        }) { risultato in
-            fine(risultato.map { pdf in
-                LettoreF24.moduli(messaggioId: messaggio.id, oggetto: messaggio.oggetto, corpo: messaggio.testo,
-                                  ricevutoIl: messaggio.ricevutoIl, pdf: pdf)
-            })
+        }, fine: fine)
+    }
+
+    /// Scarica da Gmail, solo in memoria, i PDF dell'email da cui è arrivato un F24 e li analizza.
+    func analizzaPDF(di f24: F24, fine: @escaping (Result<[AnalisiPDF], ErroreGmail>) -> Void) {
+        guard let id = f24.gmailMessageId else {
+            fine(.failure(.risposta("questo F24 non è arrivato da Gmail")))
+            return
+        }
+        guard stato == .collegato else {
+            fine(.failure(.accessoScaduto))
+            return
+        }
+        auth.accessToken { risultato in
+            switch risultato {
+            case .failure(let errore):
+                fine(.failure(errore))
+            case .success(let token):
+                let api = GmailAPI(token: token)
+                api.messaggio(id) { risultato in
+                    switch risultato {
+                    case .failure(let errore):
+                        fine(.failure(errore))
+                    case .success(let messaggio):
+                        GmailSync.scaricaPDF(di: messaggio, con: api) { risultato in
+                            fine(risultato.map { $0.map(AnalisiPDF.init) })
+                        }
+                    }
+                }
+            }
         }
     }
 

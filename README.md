@@ -28,6 +28,7 @@ Un gestionale semplicissimo per Mac per tenere traccia degli **F24**:
 | Modificare un F24 | Doppio clic sulla scheda, oppure tasto destro → **Modifica…** |
 | Annullare un pagamento | Tasto destro su un F24 pagato → **Riporta tra i da pagare** |
 | Eliminare un F24 | Tasto destro → **Elimina…** |
+| Capire perché l'importo di un F24 arrivato da Gmail non è stato letto | Tasto destro → **Analizza il PDF da Gmail…** (il PDF viene letto solo in memoria; il risultato si può copiare) |
 | Prendere gli F24 dalle email del commercialista | Pulsante giallo **Collega a Gmail** in basso (vedi sotto) |
 
 ## F24 automatici da Gmail
