@@ -6,7 +6,7 @@ Un gestionale semplicissimo per Mac per tenere traccia degli **F24**:
 - a **destra** gli F24 **già pagati**, con la data in cui sono stati pagati.
 
 ![Easy F24](docs/screenshot.png)
-Versione precedente, screen ancora da aggiornare
+Versione precedente, screen da aggiornare
 
 ## Requisiti
 
