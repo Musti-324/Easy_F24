@@ -228,14 +228,6 @@ final class GmailSync: ObservableObject {
         errore = nil
     }
 
-    /// Apre in Gmail l'email da cui è stato importato un F24.
-    func apriEmail(_ messaggioId: String) {
-        let utente = impostazioni.account?.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? "0"
-        if let url = URL(string: "https://mail.google.com/mail/u/\(utente)/#all/\(messaggioId)") {
-            NSWorkspace.shared.open(url)
-        }
-    }
-
     // MARK: - Controllo
 
     /// La ricerca fatta su Gmail: mittente = commercialista (o il suo dominio) e oggetto con

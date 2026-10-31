@@ -50,8 +50,7 @@ Easy F24 può leggere la tua casella Gmail e aggiungere da solo gli F24 che ti m
   del PDF, nei campi compilabili del modulo e, se il PDF è una scansione, con il riconoscimento del testo
   di macOS (OCR, sul Mac). La scadenza del PDF ha la precedenza su quella dell'email: con più rate ogni
   modulo ha la sua. Se un'email contiene più moduli PDF, ogni modulo diventa un F24.
-- Se non trova importo o scadenza con sicurezza, l'F24 compare con la scritta **«controlla importo e scadenza»**:
-  basta aprirlo con un doppio clic e correggere. Con il tasto destro → **Apri l'email in Gmail** vedi l'email originale.
+- Se un importo o una scadenza non sono giusti, basta aprire l'F24 con un doppio clic e correggere.
 - Controlla all'apertura dell'app, poi ogni 30 minuti e quando premi **Controlla ora**.
 - **F24 eliminati per sbaglio:** a ogni controllo l'app confronta le email del commercialista trovate su
   Gmail (dalla prima importata in poi) con la lista e riaggiunge gli F24 che mancano: tra quelli

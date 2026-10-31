@@ -64,7 +64,6 @@ struct ContentView: View {
                                      onPaga: { foglio = .paga(f24) },
                                      onModifica: { foglio = .modifica(f24) },
                                      onElimina: { avviso = .elimina(f24) },
-                                     onApriEmail: apriEmail(di: f24),
                                      onRileggi: rileggi(f24),
                                      onEliminaDefinitivamente: f24.gmailMessageId == nil ? nil : { avviso = .eliminaDefinitivamente(f24) })
                     })
@@ -81,23 +80,16 @@ struct ContentView: View {
                                    onModifica: { foglio = .modifica(f24) },
                                    onRiporta: { store.riportaDaPagare(f24) },
                                    onElimina: { avviso = .elimina(f24) },
-                                   onApriEmail: apriEmail(di: f24),
                                      onRileggi: rileggi(f24),
                                      onEliminaDefinitivamente: f24.gmailMessageId == nil ? nil : { avviso = .eliminaDefinitivamente(f24) })
                     })
         }
     }
 
-    /// Azione "Apri l'email in Gmail" per gli F24 importati da Gmail.
     /// Azione "Rileggi importo e scadenza dal PDF" per gli F24 importati da Gmail.
     private func rileggi(_ f24: F24) -> (() -> Void)? {
         guard f24.gmailMessageId != nil else { return nil }
         return { gmail.rileggi(f24) }
-    }
-
-    private func apriEmail(di f24: F24) -> (() -> Void)? {
-        guard let id = f24.gmailMessageId else { return nil }
-        return { gmail.apriEmail(id) }
     }
 
     @ViewBuilder
