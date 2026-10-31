@@ -759,5 +759,19 @@ attendi { !tokenLetto }
 verifica(calSenza.autorizzato && senzaPermesso.autorizzato([GoogleAuth.permessoGmail]), "permessi concessi letti dalla risposta di Google: calendario e Gmail")
 GmailFinto.permessiConcessi = nil
 
+print("— Collegamenti dei campi (senza Swift Concurrency)")
+var righeProva = [RigaParola(testo: "MOD. F24"), RigaParola(testo: "Deleghe")]
+righeProva[testoDi: righeProva[1].id] = "Deleghe F24"
+righeProva[testoDi: UUID()] = "ignorato"
+verifica(righeProva.map { $0.testo } == ["MOD. F24", "Deleghe F24"] && righeProva[testoDi: UUID()] == "",
+         "parole chiave: il campo modifica la riga giusta, una riga già tolta non dà errori")
+var impostazioniProva = ImpostazioniCalendario()
+let idNotifica = impostazioniProva.notifiche[0].id
+impostazioniProva[notifica: idNotifica].quantita = 3
+impostazioniProva[notifica: idNotifica].oraComeData = Calendar.current.startOfDay(for: Date()).addingTimeInterval(8 * 3600 + 15 * 60)
+impostazioniProva.oraEventoComeData = Calendar.current.startOfDay(for: Date()).addingTimeInterval(17 * 3600)
+verifica(impostazioniProva.notifiche[0].quantita == 3 && impostazioniProva.notifiche[0].ora == 8 * 60 + 15 && impostazioniProva.oraEvento == 17 * 60,
+         "calendario: quantità, ora della notifica e ora dell'evento collegate ai campi")
+
 print(falliti == 0 ? "\nTUTTO OK (\(superati) controlli)" : "\n\(falliti) VERIFICHE FALLITE su \(superati + falliti)")
 exit(falliti == 0 ? 0 : 1)

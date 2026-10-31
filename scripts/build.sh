@@ -35,6 +35,16 @@ for arch in $ARCHS; do
         -o "$BUILD_DIR/$arch/$EXECUTABLE" \
         Sources/EasyF24/*.swift
     binaries+=("$BUILD_DIR/$arch/$EXECUTABLE")
+
+    # Su macOS 11 Big Sur queste librerie Swift non esistono: se l'app ne usasse anche un solo simbolo
+    # si chiuderebbe appena il codice viene eseguito (es. MainActor di Swift Concurrency, macOS 12+).
+    vietate="libswift_Concurrency|libswift_StringProcessing|libswift_RegexParser|libswiftObservation|libswiftDistributed|libswiftSynchronization|libswiftSpatial"
+    usati=$(nm -m -u "$BUILD_DIR/$arch/$EXECUTABLE" | grep -E "\(from ($vietate)\)" | grep -v "__swift_FORCE_LOAD_" || true)
+    if [ -n "$usati" ]; then
+        echo "✗ Il programma usa librerie Swift che su macOS $MIN_MACOS non esistono: si chiuderebbe."
+        echo "$usati"
+        exit 1
+    fi
 done
 
 echo "→ Creo $APP_NAME.app…"

@@ -47,7 +47,11 @@ struct FoglioCalendario: View {
                 Button("Annulla", action: onChiudi)
                     .keyboardShortcut(.cancelAction)
                 Button("Fine") {
-                    calendario.applica(bozza)
+                    var nuove = bozza
+                    if let scelto = calendario.calendari.first(where: { ($0.primary == true ? "primary" : $0.id) == bozza.calendarioId }) {
+                        nuove.calendarioNome = scelto.nome
+                    }
+                    calendario.applica(nuove)
                     onChiudi()
                 }
                 .keyboardShortcut(.defaultAction)
@@ -93,7 +97,7 @@ struct FoglioCalendario: View {
                     Text(bozza.calendarioNome)
                         .foregroundColor(.secondary)
                 } else {
-                    Picker("", selection: sceltaCalendario) {
+                    Picker("", selection: $bozza.calendarioId) {
                         ForEach(calendario.calendari) { voce in
                             Text(voce.nome).tag(voce.primary == true ? "primary" : voce.id)
                         }
@@ -113,7 +117,7 @@ struct FoglioCalendario: View {
                 .frame(width: 240)
                 if !bozza.tuttoIlGiorno {
                     Text("alle")
-                    DatePicker("", selection: oraBinding(\.oraEvento), displayedComponents: .hourAndMinute)
+                    DatePicker("", selection: $bozza.oraEventoComeData, displayedComponents: .hourAndMinute)
                         .labelsHidden()
                     Text("(mezz'ora)")
                         .font(.caption)
@@ -148,16 +152,16 @@ struct FoglioCalendario: View {
 
     private func rigaNotifica(_ id: UUID) -> some View {
         HStack(spacing: 8) {
-            Picker("", selection: campo(id, \.metodo)) {
+            Picker("", selection: $bozza[notifica: id].metodo) {
                 ForEach(Notifica.Metodo.allCases, id: \.self) { Text($0.nome).tag($0) }
             }
             .labelsHidden()
             .frame(width: 110)
-            Stepper(value: campo(id, \.quantita), in: 1...40) {
+            Stepper(value: $bozza[notifica: id].quantita, in: 1...40) {
                 Text("\(notifica(id)?.quantita ?? 1)")
                     .frame(minWidth: 22, alignment: .trailing)
             }
-            Picker("", selection: campo(id, \.unita)) {
+            Picker("", selection: $bozza[notifica: id].unita) {
                 ForEach(bozza.tuttoIlGiorno ? [Notifica.Unita.giorni, .settimane] : Notifica.Unita.allCases, id: \.self) {
                     Text($0.nome).tag($0)
                 }
@@ -167,7 +171,7 @@ struct FoglioCalendario: View {
             Text("prima")
             if bozza.tuttoIlGiorno {
                 Text("alle")
-                DatePicker("", selection: oraNotifica(id), displayedComponents: .hourAndMinute)
+                DatePicker("", selection: $bozza[notifica: id].oraComeData, displayedComponents: .hourAndMinute)
                     .labelsHidden()
             }
             Spacer()
@@ -203,46 +207,44 @@ struct FoglioCalendario: View {
         .font(.caption)
     }
 
-    // MARK: Collegamenti ai campi
-
-    private var sceltaCalendario: Binding<String> {
-        Binding(get: { bozza.calendarioId },
-                set: { id in
-                    bozza.calendarioId = id
-                    bozza.calendarioNome = calendario.calendari.first { ($0.primary == true ? "primary" : $0.id) == id }?.nome ?? id
-                })
-    }
-
     private func notifica(_ id: UUID) -> Notifica? {
         bozza.notifiche.first { $0.id == id }
     }
+}
 
-    /// Collegamento a un campo di una notifica cercata per id (sicuro anche se nel frattempo viene tolta).
-    private func campo<Valore>(_ id: UUID, _ percorso: WritableKeyPath<Notifica, Valore>) -> Binding<Valore> {
-        Binding(get: { notifica(id)?[keyPath: percorso] ?? Notifica()[keyPath: percorso] },
-                set: { nuovo in
-                    if let indice = bozza.notifiche.firstIndex(where: { $0.id == id }) {
-                        bozza.notifiche[indice][keyPath: percorso] = nuovo
-                    }
-                })
+
+// I campi del foglio si collegano con percorsi come `$bozza[notifica: id].metodo` invece che con
+// `Binding(get:set:)`: quest'ultimo fa usare all'app Swift Concurrency, che su macOS 11 Big Sur non c'è.
+extension ImpostazioniCalendario {
+    /// La notifica con questo id (una nuova se nel frattempo è stata tolta).
+    subscript(notifica id: UUID) -> Notifica {
+        get { notifiche.first { $0.id == id } ?? Notifica() }
+        set {
+            if let indice = notifiche.firstIndex(where: { $0.id == id }) {
+                notifiche[indice] = newValue
+            }
+        }
     }
 
-    private func oraBinding(_ percorso: WritableKeyPath<ImpostazioniCalendario, Int>) -> Binding<Date> {
-        Binding(get: { FoglioCalendario.data(minuti: bozza[keyPath: percorso]) },
-                set: { bozza[keyPath: percorso] = FoglioCalendario.minuti(di: $0) })
+    /// L'ora dell'evento come data di oggi, per il selettore dell'ora.
+    var oraEventoComeData: Date {
+        get { Notifica.data(minuti: oraEvento) }
+        set { oraEvento = Notifica.minuti(di: newValue) }
+    }
+}
+
+extension Notifica {
+    /// L'ora della notifica come data di oggi, per il selettore dell'ora.
+    var oraComeData: Date {
+        get { Notifica.data(minuti: ora) }
+        set { ora = Notifica.minuti(di: newValue) }
     }
 
-    private func oraNotifica(_ id: UUID) -> Binding<Date> {
-        let minuti = campo(id, \.ora)
-        return Binding(get: { FoglioCalendario.data(minuti: minuti.wrappedValue) },
-                       set: { minuti.wrappedValue = FoglioCalendario.minuti(di: $0) })
-    }
-
-    private static func data(minuti: Int) -> Date {
+    static func data(minuti: Int) -> Date {
         Calendar.current.startOfDay(for: Date()).addingTimeInterval(TimeInterval(minuti * 60))
     }
 
-    private static func minuti(di data: Date) -> Int {
+    static func minuti(di data: Date) -> Int {
         let componenti = Calendar.current.dateComponents([.hour, .minute], from: data)
         return (componenti.hour ?? 0) * 60 + (componenti.minute ?? 0)
     }

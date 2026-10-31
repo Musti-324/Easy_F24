@@ -92,7 +92,7 @@ struct FoglioGmail: View {
                     VStack(spacing: 6) {
                         ForEach(paroleChiave) { riga in
                             HStack(spacing: 6) {
-                                TextField("es. MOD. F24", text: testo(di: riga.id))
+                                TextField("es. MOD. F24", text: $paroleChiave[testoDi: riga.id])
                                     .textFieldStyle(RoundedBorderTextFieldStyle())
                                 Button(action: { togli(riga.id) }) {
                                     Image(systemName: "minus.circle.fill")
@@ -130,16 +130,6 @@ struct FoglioGmail: View {
                 .foregroundColor(paroleValide.isEmpty ? .orange : .secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-    }
-
-    /// Collegamento al testo di una riga cercata per id (sicuro anche se nel frattempo la riga viene tolta).
-    private func testo(di id: UUID) -> Binding<String> {
-        Binding(get: { paroleChiave.first { $0.id == id }?.testo ?? "" },
-                set: { nuovo in
-                    if let indice = paroleChiave.firstIndex(where: { $0.id == id }) {
-                        paroleChiave[indice].testo = nuovo
-                    }
-                })
     }
 
     private func togli(_ id: UUID) {
@@ -411,6 +401,20 @@ extension BarraGmail {
 struct RigaParola: Identifiable {
     let id = UUID()
     var testo: String
+}
+
+extension Array where Element == RigaParola {
+    /// Il testo della riga con questo id (vuoto se nel frattempo è stata tolta), per collegare i campi di testo
+    /// con `$paroleChiave[testoDi: id]`. Un collegamento con `Binding(get:set:)` qui fa usare all'app
+    /// Swift Concurrency, che su macOS 11 Big Sur non c'è: l'app si chiuderebbe aprendo il foglio.
+    subscript(testoDi id: UUID) -> String {
+        get { first { $0.id == id }?.testo ?? "" }
+        set {
+            if let indice = firstIndex(where: { $0.id == id }) {
+                self[indice].testo = newValue
+            }
+        }
+    }
 }
 
 /// Pulsante giallo, per far notare che Gmail non è ancora collegato.
