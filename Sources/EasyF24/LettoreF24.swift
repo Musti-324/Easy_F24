@@ -16,29 +16,29 @@ enum LettoreF24 {
 
     /// Un F24 per ogni PDF che sembra un modulo F24; se non ce ne sono, un F24 dall'email.
     static func moduli(messaggioId: String, oggetto: String, corpo: String, ricevutoIl: Date, pdf: [PDF]) -> [F24] {
-        let conTesto = pdf.map { (nome: $0.nome, testo: testo(pdf: $0.dati)) }
-        var moduli = conTesto.filter { sembraF24(testo: $0.testo, nomeFile: $0.nome) }
-        if moduli.isEmpty && conTesto.count == 1 {
+        let letti = pdf.map { (nome: $0.nome, lettura: leggi(pdf: $0.dati)) }
+        var moduli = letti.filter { sembraF24($0.lettura, nomeFile: $0.nome) }
+        if moduli.isEmpty && letti.count == 1 {
             // Es. un PDF scansionato, senza testo leggibile.
-            moduli = conTesto
+            moduli = letti
         }
         let base = descrizione(oggetto: oggetto)
         if moduli.isEmpty {
-            return [f24(descrizione: base, testoPDF: nil, oggetto: oggetto, corpo: corpo,
+            return [f24(descrizione: base, lettura: nil, oggetto: oggetto, corpo: corpo,
                         ricevutoIl: ricevutoIl, messaggioId: messaggioId)]
         }
         return moduli.map { modulo in
             let nome = (modulo.nome as NSString).deletingPathExtension
             return f24(descrizione: moduli.count > 1 ? "\(base) – \(nome)" : base,
-                       testoPDF: modulo.testo, oggetto: oggetto, corpo: corpo,
+                       lettura: modulo.lettura, oggetto: oggetto, corpo: corpo,
                        ricevutoIl: ricevutoIl, messaggioId: messaggioId)
         }
     }
 
-    private static func f24(descrizione: String, testoPDF: String?, oggetto: String, corpo: String,
+    private static func f24(descrizione: String, lettura: LetturaPDF?, oggetto: String, corpo: String,
                             ricevutoIl: Date, messaggioId: String) -> F24 {
-        let trovatoImporto = importo(testoPDF: testoPDF, testoEmail: oggetto + "\n" + corpo)
-        let trovataScadenza = scadenza(oggetto: oggetto, corpo: corpo, testoPDF: testoPDF, ricevutoIl: ricevutoIl)
+        let trovatoImporto = importo(lettura: lettura, testoEmail: oggetto + "\n" + corpo)
+        let trovataScadenza = scadenza(oggetto: oggetto, corpo: corpo, testoPDF: lettura?.testoLetto, ricevutoIl: ricevutoIl)
         return F24(descrizione: descrizione,
                    importoCentesimi: trovatoImporto?.centesimi,
                    scadenza: trovataScadenza?.data ?? Calendar.current.startOfDay(for: ricevutoIl),
@@ -46,23 +46,104 @@ enum LettoreF24 {
                    daVerificare: trovatoImporto?.sicuro != true || trovataScadenza?.sicura != true)
     }
 
-    // MARK: - Testi
+    // MARK: - Lettura del PDF (solo dove serve)
 
-    static func testo(pdf dati: Data) -> String? {
+    /// Quello che si è letto di un PDF: solo alcune fasce delle prime pagine, mai tutto il documento.
+    struct LetturaPDF {
+        /// Il saldo finale del modulo; `sicuro` è false se il valore è stato trovato prima dell'etichetta.
+        var saldo: (centesimi: Int, sicuro: Bool)?
+        /// Il testo delle fasce lette, per cercare una data di scadenza.
+        var testoLetto = ""
+        /// La fascia alta della prima pagina, letta solo se il saldo non c'è, per capire se è un F24.
+        var intestazione = ""
+        var pagineLette = 0
+        var zoneLette = 0
+    }
+
+    /// Fasce della pagina in cui cercare il saldo, in frazioni dell'altezza misurate dal basso.
+    /// Nel modello F24 il "SALDO FINALE" è stampato in basso, sopra gli estremi del versamento:
+    /// si parte da lì e solo se non c'è si sale alla parte centrale. Le fasce si sovrappongono un po'
+    /// per non spezzare una riga sul confine. La parte alta (dati del contribuente, data di nascita)
+    /// non viene mai letta per cercare il saldo.
+    static let zoneSaldo: [(da: CGFloat, a: CGFloat)] = [(0.0, 0.40), (0.35, 0.75)]
+    /// Fascia alta della prima pagina ("MODELLO DI PAGAMENTO UNIFICATO F24").
+    static let zonaIntestazione: (da: CGFloat, a: CGFloat) = (0.75, 1.0)
+    /// Limiti di sicurezza: superati questi si rinuncia (F24 "da verificare") invece di leggere tutto.
+    static let massimoPagine = 3
+    static let massimiCaratteriPerZona = 20_000
+
+    /// Cerca il saldo finale partendo da dove il modello F24 lo stampa, fascia per fascia e pagina
+    /// per pagina, fermandosi appena lo trova o quando finiscono le fasce e le pagine previste.
+    static func leggi(pdf dati: Data) -> LetturaPDF? {
         guard dati.count <= MessaggioGmail.massimaDimensionePDF,
               let documento = PDFDocument(data: dati),
               !documento.isLocked,
-              let testo = documento.string,
-              !testo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+              documento.pageCount > 0
         else { return nil }
-        return String(testo.prefix(massimaLunghezzaTesto))
+        var lettura = LetturaPDF()
+        for indice in 0..<min(documento.pageCount, massimoPagine) {
+            guard let pagina = documento.page(at: indice) else { continue }
+            lettura.pagineLette += 1
+            for zona in zoneSaldo(della: pagina) {
+                let testo = testo(di: pagina, in: zona)
+                lettura.zoneLette += 1
+                lettura.testoLetto += testo + "\n"
+                if let saldo = saldoFinale(in: testo) {
+                    lettura.saldo = saldo
+                    return lettura
+                }
+            }
+        }
+        // Nessun saldo nelle fasce previste: ci si ferma qui. Si legge solo l'intestazione
+        // della prima pagina, per capire se il PDF è comunque un F24.
+        if let prima = documento.page(at: 0), prima.rotation % 360 == 0 {
+            lettura.intestazione = testo(di: prima, in: fascia(zonaIntestazione, di: prima))
+        }
+        return lettura
     }
 
-    static func sembraF24(testo: String?, nomeFile: String) -> Bool {
-        if nomeFile.lowercased().contains("f24") {
+    /// Il valore accanto all'etichetta "SALDO FINALE": prima si guarda subito dopo l'etichetta;
+    /// se lì non c'è (in alcuni PDF il valore è scritto prima, cioè lo si è già superato) si torna
+    /// indietro di poco. Il valore trovato all'indietro è meno sicuro.
+    static func saldoFinale(in testo: String) -> (centesimi: Int, sicuro: Bool)? {
+        let ns = testo as NSString
+        guard let etichetta = corrispondenze(#"saldo\s+finale"#, in: testo).first?.range else { return nil }
+        let fine = NSMaxRange(etichetta)
+        let dopo = ns.substring(with: NSRange(location: fine, length: min(200, ns.length - fine)))
+        if let primo = importi(in: dopo).first {
+            return (primo.centesimi, true)
+        }
+        let inizio = max(0, etichetta.location - 120)
+        let prima = ns.substring(with: NSRange(location: inizio, length: etichetta.location - inizio))
+        if let ultimo = importi(in: prima).last {
+            return (ultimo.centesimi, false)
+        }
+        return nil
+    }
+
+    private static func zoneSaldo(della pagina: PDFPage) -> [CGRect] {
+        // Pagina ruotata (es. scansione in orizzontale): le fasce non corrispondono più,
+        // si legge la pagina intera, sempre con il limite di caratteri.
+        guard pagina.rotation % 360 == 0 else { return [pagina.bounds(for: .cropBox)] }
+        return zoneSaldo.map { fascia($0, di: pagina) }
+    }
+
+    private static func fascia(_ zona: (da: CGFloat, a: CGFloat), di pagina: PDFPage) -> CGRect {
+        let bordi = pagina.bounds(for: .cropBox)
+        return CGRect(x: bordi.minX, y: bordi.minY + bordi.height * zona.da,
+                      width: bordi.width, height: bordi.height * (zona.a - zona.da))
+    }
+
+    private static func testo(di pagina: PDFPage, in zona: CGRect) -> String {
+        String((pagina.selection(for: zona)?.string ?? "").prefix(massimiCaratteriPerZona))
+    }
+
+    static func sembraF24(_ lettura: LetturaPDF?, nomeFile: String) -> Bool {
+        if nomeFile.lowercased().contains("f24") || lettura?.saldo != nil {
             return true
         }
-        guard let testo = testo?.lowercased() else { return false }
+        guard let lettura = lettura else { return false }
+        let testo = (lettura.intestazione + "\n" + lettura.testoLetto).lowercased()
         return testo.contains("f24") || testo.contains("saldo finale") || testo.contains("delega irrevocabile")
     }
 
@@ -92,17 +173,10 @@ enum LettoreF24 {
     private static let schemaImporto = #"(?<![\d.,])(?:\d{1,3}(?:\.\d{3})+|\d+),\d{2}(?![\d,])"#
 
     /// Cerca prima il "SALDO FINALE" del modulo, poi un importo in euro nell'email,
-    /// infine (senza certezza) l'importo più alto del PDF.
-    static func importo(testoPDF: String?, testoEmail: String) -> (centesimi: Int, sicuro: Bool)? {
-        if let pdf = testoPDF {
-            let testo = pdf as NSString
-            let etichetta = testo.range(of: "saldo finale", options: .caseInsensitive)
-            if etichetta.location != NSNotFound {
-                let dopo = String(testo.substring(from: NSMaxRange(etichetta)).prefix(300))
-                if let primo = importi(in: dopo).first {
-                    return (primo.centesimi, true)
-                }
-            }
+    /// infine (senza certezza) l'importo più alto tra le fasce del PDF già lette.
+    static func importo(lettura: LetturaPDF?, testoEmail: String) -> (centesimi: Int, sicuro: Bool)? {
+        if let saldo = lettura?.saldo, saldo.sicuro {
+            return saldo
         }
         let email = testoEmail as NSString
         for trovato in importi(in: testoEmail) {
@@ -111,7 +185,10 @@ enum LettoreF24 {
                 return (trovato.centesimi, true)
             }
         }
-        if let pdf = testoPDF, let massimo = importi(in: pdf).map({ $0.centesimi }).max(), massimo > 0 {
+        if let saldo = lettura?.saldo {
+            return saldo
+        }
+        if let letto = lettura?.testoLetto, let massimo = importi(in: letto).map({ $0.centesimi }).max(), massimo > 0 {
             return (massimo, false)
         }
         return nil
