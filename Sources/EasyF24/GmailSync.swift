@@ -27,8 +27,9 @@ final class GmailSync: ObservableObject {
 
     struct Impostazioni: Codable, Equatable {
         var emailCommercialista = ""
-        /// Testo che deve comparire nell'oggetto delle email con gli F24 (lo sceglie l'utente).
-        var parolaChiave = ""
+        /// Testi da cercare nell'oggetto delle email con gli F24 (li sceglie l'utente, al massimo 10):
+        /// basta che l'oggetto ne contenga uno.
+        var paroleChiave: [String] = []
         /// Accetta le email di qualsiasi indirizzo del dominio del commercialista (es. tutto lo studio),
         /// non solo del suo indirizzo. Non vale per i provider pubblici come gmail.com.
         var tuttoIlDominio = true
@@ -38,11 +39,21 @@ final class GmailSync: ObservableObject {
 
         init() {}
 
-        // I gmail.json delle versioni precedenti non hanno "tuttoIlDominio".
+        /// Nome del campo nella versione 1.6–1.7, che aveva una sola parola chiave.
+        private enum ChiaviVecchie: String, CodingKey {
+            case parolaChiave
+        }
+
+        // I gmail.json delle versioni precedenti non hanno tutti i campi.
         init(from decoder: Decoder) throws {
             let valori = try decoder.container(keyedBy: CodingKeys.self)
             emailCommercialista = try valori.decodeIfPresent(String.self, forKey: .emailCommercialista) ?? ""
-            parolaChiave = try valori.decodeIfPresent(String.self, forKey: .parolaChiave) ?? ""
+            if let parole = try valori.decodeIfPresent([String].self, forKey: .paroleChiave) {
+                paroleChiave = parole
+            } else {
+                let vecchia = try decoder.container(keyedBy: ChiaviVecchie.self).decodeIfPresent(String.self, forKey: .parolaChiave) ?? ""
+                paroleChiave = vecchia.isEmpty ? [] : [vecchia]
+            }
             tuttoIlDominio = try valori.decodeIfPresent(Bool.self, forKey: .tuttoIlDominio) ?? true
             account = try valori.decodeIfPresent(String.self, forKey: .account)
             ultimoModulo = try valori.decodeIfPresent(UltimoModulo.self, forKey: .ultimoModulo)
@@ -50,6 +61,7 @@ final class GmailSync: ObservableObject {
     }
 
     static let intervalloControlli: TimeInterval = 30 * 60
+    static let massimoParoleChiave = 10
 
     @Published private(set) var stato: Stato
     @Published private(set) var impostazioni: Impostazioni
@@ -63,9 +75,9 @@ final class GmailSync: ObservableObject {
 
     var ultimoModulo: UltimoModulo? { impostazioni.ultimoModulo }
     var emailCommercialistaValida: Bool { GmailSync.emailValida(impostazioni.emailCommercialista) }
-    var parolaChiaveValida: Bool { !GmailSync.pulisci(parolaChiave: impostazioni.parolaChiave).isEmpty }
-    /// Email del commercialista e parola chiave inserite: si può cercare.
-    var configurazioneCompleta: Bool { emailCommercialistaValida && parolaChiaveValida }
+    var paroleChiave: [String] { GmailSync.pulisci(paroleChiave: impostazioni.paroleChiave) }
+    /// Email del commercialista e almeno una parola chiave inserite: si può cercare.
+    var configurazioneCompleta: Bool { emailCommercialistaValida && !paroleChiave.isEmpty }
 
     /// Es. "studio-esempio.it".
     var dominioCommercialista: String? { VerificaMittente.dominio(di: impostazioni.emailCommercialista) }
@@ -116,11 +128,23 @@ final class GmailSync: ObservableObject {
         salva()
     }
 
-    func impostaParolaChiave(_ parola: String) {
-        let pulita = GmailSync.pulisci(parolaChiave: parola)
-        guard pulita != impostazioni.parolaChiave else { return }
-        impostazioni.parolaChiave = pulita
+    func impostaParoleChiave(_ parole: [String]) {
+        let pulite = GmailSync.pulisci(paroleChiave: parole)
+        guard pulite != impostazioni.paroleChiave else { return }
+        impostazioni.paroleChiave = pulite
         salva()
+    }
+
+    /// Parole pulite, senza vuote né doppioni (maiuscole indifferenti), al massimo 10.
+    static func pulisci(paroleChiave: [String]) -> [String] {
+        var viste = Set<String>()
+        var risultato: [String] = []
+        for parola in paroleChiave.map({ pulisci(parolaChiave: $0) }) where !parola.isEmpty {
+            if viste.insert(parola.lowercased()).inserted {
+                risultato.append(parola)
+            }
+        }
+        return Array(risultato.prefix(massimoParoleChiave))
     }
 
     /// Senza virgolette (romperebbero la ricerca di Gmail) né spazi doppi.
@@ -183,10 +207,12 @@ final class GmailSync: ObservableObject {
 
     // MARK: - Controllo
 
-    /// La ricerca fatta su Gmail: mittente = commercialista (o il suo dominio), oggetto con la parola chiave.
+    /// La ricerca fatta su Gmail: mittente = commercialista (o il suo dominio) e oggetto con
+    /// almeno una delle parole chiave, es. `from:x (subject:"MOD. F24" OR subject:"Deleghe")`.
     var query: String {
         let mittente = cercaPerDominio ? (dominioCommercialista ?? "") : impostazioni.emailCommercialista
-        var parti = ["from:\(mittente)", "subject:\"\(GmailSync.pulisci(parolaChiave: impostazioni.parolaChiave))\""]
+        let oggetti = paroleChiave.map { "subject:\"\($0)\"" }
+        var parti = ["from:\(mittente)", oggetti.count == 1 ? oggetti[0] : "(" + oggetti.joined(separator: " OR ") + ")"]
         if let ultimo = impostazioni.ultimoModulo {
             // Un giorno di margine: il confronto preciso si fa poi sull'ora di arrivo.
             parti.append("after:\(ultimo.ricevutoIlMs / 1000 - 86_400)")
@@ -200,8 +226,8 @@ final class GmailSync: ObservableObject {
             errore = "Inserisci l'email del commercialista da «Gmail…»."
             return
         }
-        guard parolaChiaveValida else {
-            errore = "Inserisci la parola chiave dell'oggetto da «Gmail…»."
+        guard !paroleChiave.isEmpty else {
+            errore = "Inserisci almeno una parola chiave dell'oggetto da «Gmail…»."
             return
         }
         inControllo = true
@@ -242,9 +268,9 @@ final class GmailSync: ObservableObject {
         // e che l'email sia autentica, perché il mittente di un'email si può falsificare.
         let email = impostazioni.emailCommercialista
         let perDominio = cercaPerDominio
-        let parola = impostazioni.parolaChiave
+        let parole = paroleChiave
         let candidati = messaggi.filter {
-            GmailSync.eDelCommercialista($0, email: email, tuttoIlDominio: perDominio, parolaChiave: parola)
+            GmailSync.eDelCommercialista($0, email: email, tuttoIlDominio: perDominio, paroleChiave: parole)
         }
         let validi = candidati.filter { $0.autenticato(da: email) }.sorted { $0.ricevutoIlMs < $1.ricevutoIlMs }
         let ultimoMs = impostazioni.ultimoModulo?.ricevutoIlMs ?? 0
@@ -311,9 +337,9 @@ final class GmailSync: ObservableObject {
     }
 
     /// Indirizzo vero del mittente (non basta che compaia nel nome) uguale a quello del commercialista,
-    /// oppure dello stesso dominio se `tuttoIlDominio`; e la parola chiave nell'oggetto.
-    static func eDelCommercialista(_ messaggio: MessaggioGmail, email: String, tuttoIlDominio: Bool, parolaChiave: String) -> Bool {
-        let oggettoGiusto = contiene(messaggio.oggetto, parolaChiave: parolaChiave)
+    /// oppure dello stesso dominio se `tuttoIlDominio`; e almeno una delle parole chiave nell'oggetto.
+    static func eDelCommercialista(_ messaggio: MessaggioGmail, email: String, tuttoIlDominio: Bool, paroleChiave: [String]) -> Bool {
+        let oggettoGiusto = paroleChiave.contains { contiene(messaggio.oggetto, parolaChiave: $0) }
         let mittente = VerificaMittente.indirizzo(messaggio.mittente)
         let mittenteGiusto: Bool
         if tuttoIlDominio, let dominio = VerificaMittente.dominio(di: email) {

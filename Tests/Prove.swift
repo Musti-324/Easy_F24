@@ -150,7 +150,7 @@ verifica(gmail.errore?.contains("commercialista") == true && !gmail.inControllo,
 gmail.impostaEmailCommercialista(" Studio@Bianchi.it ")
 gmail.controlla()
 verifica(gmail.errore?.contains("parola chiave") == true && !gmail.inControllo, "senza parola chiave non cerca: «\(gmail.errore ?? "")»")
-gmail.impostaParolaChiave("  MOD.   F24 ")
+gmail.impostaParoleChiave(["  MOD.   F24 "])
 verifica(gmail.query == "from:bianchi.it subject:\"MOD. F24\"" && gmail.mittenteCercato == "@bianchi.it",
          "ricerca con la parola chiave scelta e tutto il dominio: \(gmail.query)")
 
@@ -175,7 +175,7 @@ verifica(gmail.ultimoModulo?.messaggioId == "doppio" && gmail.ultimoModulo?.ogge
 
 let riaperto = GmailSync(store: F24Store(fileURL: file), auth: auth)
 verifica(riaperto.ultimoModulo == gmail.ultimoModulo && riaperto.impostazioni.emailCommercialista == "studio@bianchi.it"
-         && riaperto.impostazioni.parolaChiave == "MOD. F24", "ultimo modulo, email e parola chiave restano salvati (gmail.json)")
+         && riaperto.impostazioni.paroleChiave == ["MOD. F24"], "ultimo modulo, email e parola chiave restano salvati (gmail.json)")
 verifica(F24Store(fileURL: file).elementi.count == 3, "gli F24 importati restano salvati")
 
 GmailFinto.messaggi.append(messaggio("paola", giorno(31, 10, 2026), da: "Paola Rossi <paola@bianchi.it>", oggetto: "MOD. F24 INPS",
@@ -201,7 +201,7 @@ verifica(gmail.stato == .nonCollegato && gmail.errore?.contains("scaduto") == tr
 // MARK: - Parola chiave
 
 print("— Parola chiave scelta dall'utente")
-verifica(GmailSync.Impostazioni().parolaChiave.isEmpty, "nessuna parola chiave predefinita nel codice")
+verifica(GmailSync.Impostazioni().paroleChiave.isEmpty, "nessuna parola chiave predefinita nel codice")
 verifica(GmailSync.contiene("I: Delega F24 di novembre", parolaChiave: "delega f24"), "parola chiave personale, maiuscole indifferenti")
 verifica(GmailSync.contiene("Mod.F24 IMU", parolaChiave: "MOD. F24") && GmailSync.contiene("Pagamenti: modèllo f24", parolaChiave: "modello F24"),
          "spazi facoltativi e accenti indifferenti")
@@ -210,13 +210,41 @@ verifica(!GmailSync.contiene("Fattura ottobre", parolaChiave: "MOD. F24") && !Gm
 verifica(GmailSync.contiene("Tasse (scadenze) [urgente]", parolaChiave: "(scadenze) [urgente]"), "simboli nella parola chiave trattati come testo")
 let personale = GmailSync(store: F24Store(fileURL: URL(fileURLWithPath: "\(cartella)/personale/f24.json")), auth: auth)
 personale.impostaEmailCommercialista("studio@bianchi.it")
-personale.impostaParolaChiave("Deleghe \"F24\"")
+personale.impostaParoleChiave(["Deleghe \"F24\""])
 verifica(personale.query == "from:bianchi.it subject:\"Deleghe F24\"" && personale.configurazioneCompleta,
          "virgolette tolte dalla ricerca: \(personale.query)")
 let conDelega = decodifica(messaggio("d", giorno(1, 11, 2026), da: "studio@bianchi.it", oggetto: "Deleghe F24 novembre", testo: "", allegati: []))
-verifica(GmailSync.eDelCommercialista(conDelega, email: "studio@bianchi.it", tuttoIlDominio: true, parolaChiave: "Deleghe F24")
-         && !GmailSync.eDelCommercialista(conDelega, email: "studio@bianchi.it", tuttoIlDominio: true, parolaChiave: "MOD. F24"),
+verifica(GmailSync.eDelCommercialista(conDelega, email: "studio@bianchi.it", tuttoIlDominio: true, paroleChiave: ["Deleghe F24"])
+         && !GmailSync.eDelCommercialista(conDelega, email: "studio@bianchi.it", tuttoIlDominio: true, paroleChiave: ["MOD. F24"]),
          "vale la parola chiave scelta, non «MOD. F24»")
+
+print("— Lista di parole chiave (basta una)")
+let lista = GmailSync(store: F24Store(fileURL: URL(fileURLWithPath: "\(cartella)/lista/f24.json")), auth: auth)
+lista.impostaEmailCommercialista("studio@bianchi.it")
+lista.impostaParoleChiave(["MOD. F24", "", "  Deleghe   F24 ", "mod. f24", "Pagamento tasse"])
+verifica(lista.paroleChiave == ["MOD. F24", "Deleghe F24", "Pagamento tasse"], "parole pulite: vuote e doppioni tolti → \(lista.paroleChiave)")
+verifica(lista.query == "from:bianchi.it (subject:\"MOD. F24\" OR subject:\"Deleghe F24\" OR subject:\"Pagamento tasse\")",
+         "ricerca Gmail con OR: \(lista.query)")
+for (oggetto, atteso) in [("MOD. F24 IMU", true), ("I: deleghe f24 novembre", true), ("Pagamento tasse di dicembre", true), ("Fattura ottobre", false)] {
+    let m = decodifica(messaggio("o", giorno(1, 11, 2026), da: "studio@bianchi.it", oggetto: oggetto, testo: "", allegati: []))
+    verifica(GmailSync.eDelCommercialista(m, email: "studio@bianchi.it", tuttoIlDominio: true, paroleChiave: lista.paroleChiave) == atteso,
+             "«\(oggetto)» → \(atteso ? "importata" : "scartata")")
+}
+lista.impostaParoleChiave((1...15).map { "Parola \($0)" })
+verifica(lista.paroleChiave.count == GmailSync.massimoParoleChiave && lista.paroleChiave.last == "Parola 10", "al massimo 10 parole chiave")
+let riapertaLista = GmailSync(store: F24Store(fileURL: URL(fileURLWithPath: "\(cartella)/lista/f24.json")), auth: auth)
+verifica(riapertaLista.paroleChiave.count == 10, "la lista resta salvata (gmail.json)")
+let unaSola = GmailSync(store: F24Store(fileURL: URL(fileURLWithPath: "\(cartella)/una/f24.json")), auth: auth)
+unaSola.impostaEmailCommercialista("studio@bianchi.it")
+unaSola.impostaParoleChiave(["MOD. F24"])
+verifica(unaSola.query == "from:bianchi.it subject:\"MOD. F24\"", "con una sola parola niente parentesi né OR")
+let file16 = URL(fileURLWithPath: "\(cartella)/v16/f24.json")
+try? FileManager.default.createDirectory(at: file16.deletingLastPathComponent(), withIntermediateDirectories: true)
+try! Data(#"{"emailCommercialista":"studio@bianchi.it","parolaChiave":"Deleghe F24","tuttoIlDominio":true}"#.utf8)
+    .write(to: file16.deletingLastPathComponent().appendingPathComponent("gmail.json"))
+verifica(GmailSync(store: F24Store(fileURL: file16), auth: auth).paroleChiave == ["Deleghe F24"], "la parola chiave della 1.6–1.7 diventa la prima della lista")
+verifica(BarraGmail.elenco(["A"]) == "«A»" && BarraGmail.elenco(["A", "B"]) == "«A» o «B»" && BarraGmail.elenco(["A", "B", "C", "D"]) == "«A», «B» o altre 2",
+         "testo della barra in basso")
 
 // MARK: - Mittente e dominio
 
@@ -234,18 +262,18 @@ verifica(!VerificaMittente.autenticato(["mx.google.com; dmarc=pass header.from=e
 
 print("— Tutto il dominio")
 let daPaola = decodifica(messaggio("p", giorno(1, 11, 2026), da: "paola@bianchi.it", oggetto: "MOD. F24", testo: "", allegati: []))
-verifica(GmailSync.eDelCommercialista(daPaola, email: "studio@bianchi.it", tuttoIlDominio: true, parolaChiave: "MOD. F24"), "collega dello stesso dominio accettato")
-verifica(!GmailSync.eDelCommercialista(daPaola, email: "studio@bianchi.it", tuttoIlDominio: false, parolaChiave: "MOD. F24"), "con l'opzione spenta solo l'indirizzo esatto")
+verifica(GmailSync.eDelCommercialista(daPaola, email: "studio@bianchi.it", tuttoIlDominio: true, paroleChiave: ["MOD. F24"]), "collega dello stesso dominio accettato")
+verifica(!GmailSync.eDelCommercialista(daPaola, email: "studio@bianchi.it", tuttoIlDominio: false, paroleChiave: ["MOD. F24"]), "con l'opzione spenta solo l'indirizzo esatto")
 for (truffa, descrizione) in [("x@bianchi.it.evil.example", "dominio che inizia uguale"), ("x@evilbianchi.it", "dominio che finisce uguale"),
                               ("\"x@bianchi.it\" <x@evil.example>", "dominio solo nel nome visualizzato")] {
     let m = decodifica(messaggio("t", giorno(1, 11, 2026), da: truffa, oggetto: "MOD. F24", testo: "", allegati: []))
-    verifica(!GmailSync.eDelCommercialista(m, email: "studio@bianchi.it", tuttoIlDominio: true, parolaChiave: "MOD. F24"), "rifiutato: \(descrizione)")
+    verifica(!GmailSync.eDelCommercialista(m, email: "studio@bianchi.it", tuttoIlDominio: true, paroleChiave: ["MOD. F24"]), "rifiutato: \(descrizione)")
 }
 let sottodominio = decodifica(messaggio("s", giorno(1, 11, 2026), da: "f24@mail.bianchi.it", oggetto: "MOD. F24", testo: "", allegati: []))
-verifica(GmailSync.eDelCommercialista(sottodominio, email: "studio@bianchi.it", tuttoIlDominio: true, parolaChiave: "MOD. F24"), "sottodominio dello studio accettato")
+verifica(GmailSync.eDelCommercialista(sottodominio, email: "studio@bianchi.it", tuttoIlDominio: true, paroleChiave: ["MOD. F24"]), "sottodominio dello studio accettato")
 let pubblico = GmailSync(store: F24Store(fileURL: URL(fileURLWithPath: "\(cartella)/pubblico/f24.json")), auth: auth)
 pubblico.impostaEmailCommercialista("studio.rossi@gmail.com")
-pubblico.impostaParolaChiave("MOD. F24")
+pubblico.impostaParoleChiave(["MOD. F24"])
 verifica(!pubblico.cercaPerDominio && pubblico.query == "from:studio.rossi@gmail.com subject:\"MOD. F24\"", "provider pubblico (gmail.com): resta l'indirizzo esatto")
 verifica(VerificaMittente.providerPubblico("pec.it") && VerificaMittente.providerPubblico("libero.it") && !VerificaMittente.providerPubblico("bianchi.it"),
          "elenco dei provider pubblici e PEC")
@@ -254,7 +282,7 @@ try? FileManager.default.createDirectory(at: vecchioGmail.deletingLastPathCompon
 try! Data(#"{"emailCommercialista":"studio@bianchi.it","ultimoModulo":{"messaggioId":"a","oggetto":"MOD. F24","ricevutoIlMs":1}}"#.utf8)
     .write(to: vecchioGmail.deletingLastPathComponent().appendingPathComponent("gmail.json"))
 let daVecchio = GmailSync(store: F24Store(fileURL: vecchioGmail), auth: auth)
-verifica(daVecchio.ultimoModulo?.messaggioId == "a" && daVecchio.impostazioni.tuttoIlDominio && daVecchio.impostazioni.parolaChiave.isEmpty
+verifica(daVecchio.ultimoModulo?.messaggioId == "a" && daVecchio.impostazioni.tuttoIlDominio && daVecchio.impostazioni.paroleChiave.isEmpty
          && !daVecchio.configurazioneCompleta, "gmail.json precedente si legge; la parola chiave va scelta dall'utente")
 
 // MARK: - Accesso a Google

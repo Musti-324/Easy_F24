@@ -8,7 +8,7 @@ struct FoglioGmail: View {
     let onChiudi: () -> Void
 
     @State private var emailCommercialista: String
-    @State private var parolaChiave: String
+    @State private var paroleChiave: [RigaParola]
     @State private var tuttoIlDominio: Bool
     @State private var clientId: String
     @State private var clientSecret: String
@@ -19,7 +19,8 @@ struct FoglioGmail: View {
         self.gmail = gmail
         self.onChiudi = onChiudi
         _emailCommercialista = State(initialValue: gmail.impostazioni.emailCommercialista)
-        _parolaChiave = State(initialValue: gmail.impostazioni.parolaChiave)
+        let salvate = gmail.impostazioni.paroleChiave.map { RigaParola(testo: $0) }
+        _paroleChiave = State(initialValue: salvate.isEmpty ? [RigaParola(testo: "")] : salvate)
         _tuttoIlDominio = State(initialValue: gmail.impostazioni.tuttoIlDominio)
         _clientId = State(initialValue: gmail.auth.credenziali?.clientId ?? "")
         _clientSecret = State(initialValue: gmail.auth.credenziali?.clientSecret ?? "")
@@ -37,14 +38,14 @@ struct FoglioGmail: View {
             Text("Collegamento a Gmail")
                 .font(.title2)
                 .bold()
-            Text("Easy F24 cerca nella tua casella le email del commercialista che hanno nell'oggetto la parola chiave scelta da te, e aggiunge i nuovi moduli tra quelli da pagare. L'accesso a Gmail è in sola lettura.")
+            Text("Easy F24 cerca nella tua casella le email del commercialista che hanno nell'oggetto una delle parole chiave scelte da te, e aggiunge i nuovi moduli tra quelli da pagare. L'accesso a Gmail è in sola lettura.")
                 .foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             Divider()
             Text("1. Email del commercialista").font(.headline)
             sezioneCommercialista
-            sezioneParolaChiave
+            sezioneParoleChiave
 
             Divider()
             Text("2. Credenziali dell'app Google").font(.headline)
@@ -70,18 +71,80 @@ struct FoglioGmail: View {
         .frame(width: 500)
     }
 
-    private var sezioneParolaChiave: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Etichetta("Parola chiave nell'oggetto dell'email")
-            TextField("es. MOD. F24", text: $parolaChiave)
-                .textFieldStyle(RoundedBorderTextFieldStyle())
-            Text(GmailSync.pulisci(parolaChiave: parolaChiave).isEmpty
-                 ? "Scrivi il testo che il commercialista mette sempre nell'oggetto delle email con gli F24."
-                 : "Vengono importate solo le email con «\(GmailSync.pulisci(parolaChiave: parolaChiave))» nell'oggetto (maiuscole e minuscole non contano).")
+    /// Altezza di una riga dell'elenco (campo di testo più spazio).
+    private static let altezzaRiga: CGFloat = 30
+
+    /// Parole chiave inserite, pulite (senza vuote né doppioni).
+    private var paroleValide: [String] { GmailSync.pulisci(paroleChiave: paroleChiave.map { $0.testo }) }
+
+    private var sezioneParoleChiave: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Etichetta("Parole chiave nell'oggetto dell'email (ne basta una)")
+                Spacer()
+                Text("\(paroleChiave.count) di \(GmailSync.massimoParoleChiave)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            // Al massimo 4 righe visibili, poi si scorre: il foglio resta dentro lo schermo del Mac.
+            ScrollViewReader { scorrimento in
+                ScrollView {
+                    VStack(spacing: 6) {
+                        ForEach(paroleChiave) { riga in
+                            HStack(spacing: 6) {
+                                TextField("es. MOD. F24", text: testo(di: riga.id))
+                                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                                Button(action: { togli(riga.id) }) {
+                                    Image(systemName: "minus.circle.fill")
+                                        .foregroundColor(.secondary)
+                                }
+                                .buttonStyle(BorderlessButtonStyle())
+                                .help("Togli questa parola chiave")
+                                .disabled(paroleChiave.count == 1)
+                            }
+                            .id(riga.id)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+                .frame(height: CGFloat(min(paroleChiave.count, 4)) * FoglioGmail.altezzaRiga + 4)
+                .onChange(of: paroleChiave.count) { _ in
+                    if let ultima = paroleChiave.last {
+                        withAnimation { scorrimento.scrollTo(ultima.id, anchor: .bottom) }
+                    }
+                }
+            }
+            Button(action: { paroleChiave.append(RigaParola(testo: "")) }) {
+                HStack(spacing: 4) {
+                    Image(systemName: "plus.circle.fill")
+                    Text("Aggiungi parola chiave")
+                }
+                .foregroundColor(paroleChiave.count >= GmailSync.massimoParoleChiave ? .secondary : .accentColor)
+            }
+            .buttonStyle(BorderlessButtonStyle())
+            .disabled(paroleChiave.count >= GmailSync.massimoParoleChiave)
+            Text(paroleValide.isEmpty
+                 ? "Scrivi il testo che il commercialista mette nell'oggetto delle email con gli F24."
+                 : "Vengono importate le email che hanno nell'oggetto almeno una di queste parole (maiuscole e minuscole non contano).")
                 .font(.caption)
-                .foregroundColor(GmailSync.pulisci(parolaChiave: parolaChiave).isEmpty ? .orange : .secondary)
+                .foregroundColor(paroleValide.isEmpty ? .orange : .secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    /// Collegamento al testo di una riga cercata per id (sicuro anche se nel frattempo la riga viene tolta).
+    private func testo(di id: UUID) -> Binding<String> {
+        Binding(get: { paroleChiave.first { $0.id == id }?.testo ?? "" },
+                set: { nuovo in
+                    if let indice = paroleChiave.firstIndex(where: { $0.id == id }) {
+                        paroleChiave[indice].testo = nuovo
+                    }
+                })
+    }
+
+    private func togli(_ id: UUID) {
+        guard paroleChiave.count > 1 else { return }
+        paroleChiave.removeAll { $0.id == id }
     }
 
     private var sezioneCommercialista: some View {
@@ -169,7 +232,7 @@ struct FoglioGmail: View {
                     salvaCommercialista()
                     gmail.controlla()
                 }
-                .disabled(gmail.inControllo || !emailValida || GmailSync.pulisci(parolaChiave: parolaChiave).isEmpty)
+                .disabled(gmail.inControllo || !emailValida || paroleValide.isEmpty)
                 Button("Scollega", action: gmail.scollega)
             }
         case .attesaBrowser:
@@ -235,7 +298,7 @@ struct FoglioGmail: View {
     }
 
     private func salvaCommercialista() {
-        gmail.impostaParolaChiave(parolaChiave)
+        gmail.impostaParoleChiave(paroleChiave.map { $0.testo })
         if emailValida {
             gmail.impostaEmailCommercialista(emailCommercialista)
             gmail.impostaTuttoIlDominio(tuttoIlDominio)
@@ -305,7 +368,7 @@ struct BarraGmail: View {
             if gmail.inControllo {
                 return "Controllo delle email di \(gmail.mittenteCercato)…"
             }
-            var parti = ["Gmail: email da \(gmail.mittenteCercato) con «\(gmail.impostazioni.parolaChiave)»"]
+            var parti = ["Gmail: email da \(gmail.mittenteCercato) con \(BarraGmail.elenco(gmail.paroleChiave))"]
             if let quando = gmail.ultimoControllo {
                 let giorno = Calendar.current.isDateInToday(quando) ? "" : "il \(Formato.data(quando)) "
                 parti.append("controllate \(giorno)alle \(Formato.ora(quando))")
@@ -316,6 +379,25 @@ struct BarraGmail: View {
             return parti.joined(separator: " · ")
         }
     }
+}
+
+extension BarraGmail {
+    /// «A»; «A» o «B»; «A», «B» o altre 3
+    static func elenco(_ parole: [String]) -> String {
+        let citate = parole.map { "«\($0)»" }
+        switch citate.count {
+        case 0: return "nessuna parola chiave"
+        case 1: return citate[0]
+        case 2: return citate[0] + " o " + citate[1]
+        default: return citate[0] + ", " + citate[1] + " o altre \(citate.count - 2)"
+        }
+    }
+}
+
+/// Una riga dell'elenco delle parole chiave nel foglio Gmail.
+struct RigaParola: Identifiable {
+    let id = UUID()
+    var testo: String
 }
 
 /// Pulsante giallo, per far notare che Gmail non è ancora collegato.

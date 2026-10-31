@@ -34,8 +34,9 @@ Un gestionale semplicissimo per Mac per tenere traccia degli **F24**:
 
 Easy F24 può leggere la tua casella Gmail e aggiungere da solo gli F24 che ti manda il commercialista.
 
-- Cerca **solo** le email del commercialista che hanno nell'oggetto la **parola chiave scelta da te**
-  (per esempio «MOD. F24»; ricerca Gmail: `from:<commercialista> subject:"<parola chiave>"`).
+- Cerca **solo** le email del commercialista che hanno nell'oggetto **almeno una delle parole chiave
+  scelte da te** (fino a 10, per esempio «MOD. F24», «Deleghe F24»; ricerca Gmail:
+  `from:<commercialista> (subject:"MOD. F24" OR subject:"Deleghe F24")`).
   Maiuscole, minuscole, accenti e spazi non contano. Se lo studio ha un dominio proprio
   (es. `studio@studio-esempio.it`), di default accetta **qualsiasi indirizzo di quel dominio**, così arrivano anche
   gli F24 mandati dai colleghi; l'opzione si può spegnere. Per i provider pubblici (gmail.com, libero.it, PEC…)
@@ -66,7 +67,8 @@ Google chiede che ogni app che legge Gmail abbia delle proprie credenziali. Sono
 5. In Easy F24 premi il pulsante giallo **Collega a Gmail** in basso a destra
    (una volta collegato diventa **Gmail…**, per cambiare le impostazioni):
    1. scrivi l'**email del commercialista** (se lo studio ha un dominio proprio, puoi accettare tutti i suoi indirizzi)
-      e la **parola chiave** che il commercialista mette sempre nell'oggetto delle email con gli F24;
+      e le **parole chiave** che il commercialista mette nell'oggetto delle email con gli F24
+      (ne basta una per email; al massimo 10);
    2. premi **Importa file JSON…** e scegli il file appena scaricato (oppure incolla Client ID e client secret);
    3. premi **Accedi con Google…**: si apre il browser, scegli il tuo account e consenti l'accesso.
 
@@ -84,7 +86,7 @@ Google chiede che ogni app che legge Gmail abbia delle proprie credenziali. Sono
 
 - **Email false.** Il mittente di un'email si può falsificare. Easy F24 importa un'email solo se:
   l'indirizzo vero (non il nome visualizzato) è quello del commercialista o del dominio del suo studio, l'oggetto contiene
-  la tua parola chiave e Gmail ha verificato che viene davvero dal suo dominio (SPF, DKIM o DMARC).
+  una delle tue parole chiave e Gmail ha verificato che viene davvero dal suo dominio (SPF, DKIM o DMARC).
   Le email che non superano la verifica non vengono importate e sono segnalate in basso con uno scudo arancione.
 - **Accesso a Google.** Si fa nel browser (OAuth con PKCE e controllo dello «state»): l'app non vede mai la password.
   Il permesso è di sola lettura e il token sta nel Portachiavi. **Scollega** revoca il permesso; si può revocare
