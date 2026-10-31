@@ -73,16 +73,24 @@ final class GmailFinto: URLProtocol {
     static var refreshScaduto = false
     /// Indirizzi chiesti a Gmail, per controllare che non si scarichi più del necessario.
     static var richieste: [String] = []
+    /// Permessi restituiti da Google insieme al token (nil = campo assente, come nelle vecchie risposte).
+    static var permessiConcessi: String?
     override class func canInit(with request: URLRequest) -> Bool { request.url?.host?.hasSuffix("googleapis.com") == true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func stopLoading() {}
     override func startLoading() {
         let url = request.url!
         GmailFinto.richieste.append(url.path)
+        if url.host == "www.googleapis.com" && url.path.hasPrefix("/calendar/v3") {
+            rispondiCalendario(url)
+            return
+        }
         var json: Any = [:]
         var codice = 200
         if url.host == "oauth2.googleapis.com" {
-            json = GmailFinto.refreshScaduto ? ["error": "invalid_grant"] as [String: Any] : ["access_token": "tok", "expires_in": 3600] as [String: Any]
+            var token: [String: Any] = ["access_token": "tok", "expires_in": 3600]
+            token["scope"] = GmailFinto.permessiConcessi
+            json = GmailFinto.refreshScaduto ? ["error": "invalid_grant"] as [String: Any] : token
             if GmailFinto.refreshScaduto { codice = 400 }
         } else if request.value(forHTTPHeaderField: "Authorization") != "Bearer tok" {
             codice = 401
@@ -111,6 +119,110 @@ final class GmailFinto: URLProtocol {
                             cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: corpo)
         client?.urlProtocolDidFinishLoading(self)
+    }
+
+    /// Google Calendar in memoria: elenco calendari, ricerca, creazione, modifica ed eliminazione di eventi.
+    private func rispondiCalendario(_ url: URL) {
+        let metodo = request.httpMethod ?? "GET"
+        CalendarioFinto.richieste.append(metodo + " " + url.path)
+        let parti = url.path.components(separatedBy: "/")
+        let parametri = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        func parametro(_ nome: String) -> String? { parametri.first { $0.name == nome }?.value }
+        var codice = 200
+        var json: Any? = [:]
+        if request.value(forHTTPHeaderField: "Authorization") != "Bearer tok" {
+            codice = 401
+        } else if url.path.hasSuffix("/users/me/calendarList") {
+            json = ["items": [["id": "diego@gmail.com", "summary": "Diego", "primary": true],
+                              ["id": "lavoro#gruppo@group.calendar.google.com", "summary": "Lavoro"]]]
+        } else if parti.count >= 6 && parti[5] == "events" {
+            let calendario = parti[4]
+            let eventoId = parti.count > 6 ? parti[6] : nil
+            switch (metodo, eventoId) {
+            case ("GET", nil):
+                var trovati = CalendarioFinto.eventi.values.filter { $0["calendario"] as? String == calendario }
+                if let proprieta = parametro("privateExtendedProperty") {
+                    let id = proprieta.replacingOccurrences(of: "easyF24=", with: "")
+                    trovati = trovati.filter { CalendarioFinto.idF24($0) == id }
+                }
+                if let testo = parametro("q"), let inizio = parametro("timeMin") {
+                    trovati = trovati.filter { CalendarioFinto.giorno($0) == String(inizio.prefix(10))
+                        && (($0["summary"] as? String) ?? "").lowercased().contains(testo.lowercased()) }
+                }
+                json = ["items": trovati]
+            case ("POST", nil):
+                var evento = leggiCorpo()
+                let id = "ev\(CalendarioFinto.prossimo)"
+                CalendarioFinto.prossimo += 1
+                evento["id"] = id
+                evento["calendario"] = calendario
+                CalendarioFinto.eventi[id] = evento
+                json = evento
+            case ("PATCH", let id?):
+                if var evento = CalendarioFinto.eventi[id] {
+                    for (chiave, valore) in leggiCorpo() { evento[chiave] = valore }
+                    CalendarioFinto.eventi[id] = evento
+                    json = evento
+                } else {
+                    codice = 404
+                }
+            case ("DELETE", let id?):
+                codice = CalendarioFinto.eventi.removeValue(forKey: id) == nil ? 410 : 204
+                json = nil
+            default:
+                codice = 400
+            }
+        }
+        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: url, statusCode: codice, httpVersion: nil, headerFields: nil)!,
+                            cacheStoragePolicy: .notAllowed)
+        if let json = json {
+            client?.urlProtocol(self, didLoad: try! JSONSerialization.data(withJSONObject: json))
+        }
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    private func leggiCorpo() -> [String: Any] {
+        var dati = request.httpBody ?? Data()
+        if dati.isEmpty, let flusso = request.httpBodyStream {
+            flusso.open()
+            var buffer = [UInt8](repeating: 0, count: 4096)
+            while flusso.hasBytesAvailable {
+                let letti = flusso.read(&buffer, maxLength: buffer.count)
+                if letti <= 0 { break }
+                dati.append(buffer, count: letti)
+            }
+            flusso.close()
+        }
+        return ((try? JSONSerialization.jsonObject(with: dati)) as? [String: Any]) ?? [:]
+    }
+}
+
+/// Lo stato del Google Calendar simulato.
+enum CalendarioFinto {
+    static var eventi: [String: [String: Any]] = [:]
+    static var prossimo = 1
+    static var richieste: [String] = []
+
+    static func idF24(_ evento: [String: Any]) -> String? {
+        ((evento["extendedProperties"] as? [String: Any])?["private"] as? [String: Any])?["easyF24"] as? String
+    }
+
+    static func evento(di f24: F24) -> [String: Any]? {
+        eventi.values.first { idF24($0) == f24.id.uuidString }
+    }
+
+    static func inizio(_ evento: [String: Any]?) -> String {
+        let inizio = evento?["start"] as? [String: Any]
+        return (inizio?["date"] as? String) ?? (inizio?["dateTime"] as? String) ?? ""
+    }
+
+    static func giorno(_ evento: [String: Any]) -> String {
+        String(inizio(evento).prefix(10))
+    }
+
+    static func notifiche(_ evento: [String: Any]?) -> [String] {
+        let promemoria = evento?["reminders"] as? [String: Any]
+        return ((promemoria?["overrides"] as? [[String: Any]]) ?? []).map { "\($0["method"] ?? "")-\($0["minutes"] ?? "")" }
     }
 }
 func b64(_ s: String) -> String {
@@ -513,6 +625,124 @@ verifica(gmailCaso.impostazioni.importati["primo"] == nil && gmailCaso.errore ==
 let riapertoCaso = GmailSync(store: F24Store(fileURL: URL(fileURLWithPath: "\(cartella)/caso/f24.json")), auth: auth)
 verifica(riapertoCaso.impostazioni.importati["rate"] == 2 && riapertoCaso.impostazioni.importati["banca"] == 0 && riapertoCaso.impostazioni.esclusi.count == 1,
          "memoria salvata: «rate» ha 2 F24, «banca» nessuno, 1 eliminato definitivamente")
+
+print("— Google Calendar")
+verifica(Notifica(quantita: 1, unita: .giorni, ora: 9 * 60).minutiPrima(tuttoIlGiorno: true) == 900, "evento di un giorno intero: «1 giorno prima alle 9:00» = 900 minuti")
+verifica(Notifica(quantita: 1, unita: .settimane, ora: 9 * 60).minutiPrima(tuttoIlGiorno: true) == 9540, "«1 settimana prima alle 9:00» = 9.540 minuti")
+verifica(Notifica(quantita: 2, unita: .ore).minutiPrima(tuttoIlGiorno: false) == 120 && Notifica(quantita: 9, unita: .settimane).minutiPrima(tuttoIlGiorno: false) == 40_320,
+         "evento a orario: «2 ore prima» = 120; oltre 4 settimane si ferma al massimo di Google")
+
+GmailFinto.refreshScaduto = false
+GmailFinto.permessiConcessi = nil
+CalendarioSync.attesa = 0.2
+func aspetta(_ calendario: CalendarioSync) {
+    RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+    attendi { calendario.inCorso }
+}
+let cartellaCal = URL(fileURLWithPath: "\(cartella)/calendario")
+let storeCal = F24Store(fileURL: cartellaCal.appendingPathComponent("f24.json"))
+let rataA = F24(descrizione: "Rate INPS – F24NoCalc", importoCentesimi: 37678, scadenza: giorno(16, 11, 2026), gmailMessageId: "rate")
+let rataB = F24(descrizione: "Rate INPS – F24NoCalc (1)", importoCentesimi: 113034, scadenza: giorno(16, 2, 2027), gmailMessageId: "rate")
+let giaPagato = F24(descrizione: "Acconto IRPEF", importoCentesimi: 98000, scadenza: giorno(30, 9, 2026), pagatoIl: giorno(29, 9, 2026))
+[rataA, rataB, giaPagato].forEach { storeCal.aggiungi($0) }
+// La rata A l'utente l'aveva già messa a mano nel suo calendario.
+CalendarioFinto.eventi = ["mano1": ["id": "mano1", "calendario": "primary", "summary": "Pagare F24 INPS 376,78 €",
+                                    "start": ["date": "2026-11-16"], "end": ["date": "2026-11-17"]]]
+CalendarioFinto.richieste = []
+let authCal = GoogleAuth(servizioPortachiavi: nil, credenziali: CredenzialiGoogle(clientId: "id", clientSecret: "s", refreshToken: "r",
+                                                                                 permessi: [GoogleAuth.permessoGmail] + GoogleAuth.permessiCalendario))
+let calSync = CalendarioSync(store: storeCal, auth: authCal)
+calSync.avvia()
+aspetta(calSync)
+verifica(CalendarioFinto.richieste.isEmpty, "interruttore spento: nessuna chiamata a Google Calendar")
+
+var imp = calSync.impostazioni
+imp.attivo = true
+imp.notifiche = [Notifica(metodo: .popup, quantita: 1, unita: .giorni, ora: 9 * 60), Notifica(metodo: .email, quantita: 1, unita: .settimane, ora: 9 * 60)]
+calSync.applica(imp)
+aspetta(calSync)
+verifica(calSync.impostazioni.eventi[rataA.id.uuidString]?.id == "mano1" && CalendarioFinto.eventi.count == 2,
+         "primo controllo: la rata già nel calendario non viene duplicata (\(calSync.esito ?? calSync.errore ?? ""))")
+let eventoB = CalendarioFinto.evento(di: rataB)
+verifica(CalendarioFinto.inizio(eventoB) == "2027-02-16" && ((eventoB?["end"] as? [String: Any])?["date"] as? String) == "2027-02-17",
+         "rata mancante aggiunta tutto il giorno della scadenza (16/02/2027)")
+verifica(CalendarioFinto.notifiche(eventoB) == ["popup-900", "email-9540"] && (eventoB?["summary"] as? String)?.contains("1.130,34 €") == true,
+         "con le notifiche scelte (1 giorno prima alle 9, email 1 settimana prima) e l'importo nel titolo")
+verifica(CalendarioFinto.evento(di: giaPagato) == nil, "l'F24 già pagato non va nel calendario")
+
+CalendarioFinto.richieste = []
+calSync.sincronizza()
+aspetta(calSync)
+verifica(CalendarioFinto.richieste.isEmpty, "niente di cambiato: nessuna chiamata a Google")
+
+imp = calSync.impostazioni
+imp.tuttoIlGiorno = false
+imp.oraEvento = 8 * 60 + 30
+imp.notifiche = [Notifica(metodo: .popup, quantita: 2, unita: .ore)]
+calSync.applica(imp)
+aspetta(calSync)
+verifica(CalendarioFinto.richieste.isEmpty && CalendarioFinto.notifiche(CalendarioFinto.evento(di: rataB)) == ["popup-900", "email-9540"],
+         "nuove impostazioni non retroattive: gli eventi già creati restano come sono")
+
+let f24Dicembre = F24(descrizione: "MOD. F24 f24Dicembre", importoCentesimi: 5000, scadenza: giorno(16, 12, 2026), gmailMessageId: "dic")
+storeCal.aggiungi(f24Dicembre)
+aspetta(calSync)
+let eventoDicembre = CalendarioFinto.evento(di: f24Dicembre)
+verifica(CalendarioFinto.inizio(eventoDicembre) == "2026-12-16T08:30:00"
+         && ((eventoDicembre?["end"] as? [String: Any])?["dateTime"] as? String) == "2026-12-16T09:00:00"
+         && CalendarioFinto.notifiche(eventoDicembre) == ["popup-120"],
+         "nuovo F24 (es. da «Controlla»): aggiunto da solo alle 8:30 con le nuove notifiche")
+
+storeCal.segnaPagato(storeCal.elementi.first { $0.id == rataB.id }!, il: Date())
+aspetta(calSync)
+verifica(CalendarioFinto.evento(di: rataB) == nil && calSync.impostazioni.eventi[rataB.id.uuidString] == nil && storeCal.pagati.contains { $0.id == rataB.id },
+         "segnato come pagato: evento tolto dal calendario, F24 tra i pagati")
+storeCal.riportaDaPagare(storeCal.elementi.first { $0.id == rataB.id }!)
+aspetta(calSync)
+verifica(CalendarioFinto.evento(di: rataB) != nil, "riportato tra i da pagare: evento di nuovo nel calendario")
+
+var spostato = storeCal.elementi.first { $0.id == f24Dicembre.id }!
+spostato.scadenza = giorno(17, 12, 2026)
+storeCal.aggiorna(spostato)
+aspetta(calSync)
+verifica(CalendarioFinto.inizio(CalendarioFinto.evento(di: f24Dicembre)) == "2026-12-17T08:30:00"
+         && CalendarioFinto.notifiche(CalendarioFinto.evento(di: f24Dicembre)) == ["popup-120"],
+         "scadenza cambiata: evento spostato al 17/12, notifiche invariate")
+storeCal.elimina(spostato)
+aspetta(calSync)
+verifica(CalendarioFinto.evento(di: f24Dicembre) == nil, "F24 eliminato: evento tolto")
+
+let idEventoB = calSync.impostazioni.eventi[rataB.id.uuidString]!.id
+CalendarioFinto.eventi[idEventoB] = nil
+var rinominato = storeCal.elementi.first { $0.id == rataB.id }!
+rinominato.descrizione = "Seconda rata INPS"
+storeCal.aggiorna(rinominato)
+aspetta(calSync)
+verifica((CalendarioFinto.evento(di: rataB)?["summary"] as? String)?.contains("Seconda rata INPS") == true && calSync.errore == nil,
+         "evento cancellato a mano in Google: ricreato al cambiamento successivo")
+
+imp = calSync.impostazioni
+imp.attivo = false
+calSync.applica(imp)
+CalendarioFinto.richieste = []
+storeCal.aggiungi(F24(descrizione: "A mano", importoCentesimi: 100, scadenza: giorno(20, 12, 2026)))
+aspetta(calSync)
+verifica(CalendarioFinto.richieste.isEmpty, "interruttore spento: le modifiche non toccano il calendario")
+verifica(CalendarioSync(store: F24Store(fileURL: cartellaCal.appendingPathComponent("f24.json")), auth: authCal).impostazioni.eventi[rataA.id.uuidString]?.id == "mano1",
+         "collegamenti F24 ↔ eventi salvati in calendario.json")
+
+let senzaPermesso = GoogleAuth(servizioPortachiavi: nil, credenziali: CredenzialiGoogle(clientId: "id", clientSecret: "s", refreshToken: "r"))
+let calSenza = CalendarioSync(store: F24Store(fileURL: URL(fileURLWithPath: "\(cartella)/calendario2/f24.json")), auth: senzaPermesso)
+var impSenza = calSenza.impostazioni
+impSenza.attivo = true
+calSenza.applica(impSenza)
+verifica(!calSenza.autorizzato && calSenza.errore?.contains("Autorizza") == true, "senza il permesso del calendario: chiede di autorizzarlo")
+GmailFinto.permessiConcessi = ([GoogleAuth.permessoGmail] + GoogleAuth.permessiCalendario).joined(separator: " ")
+var tokenLetto = false
+senzaPermesso.accessToken { _ in tokenLetto = true }
+attendi { !tokenLetto }
+verifica(calSenza.autorizzato && senzaPermesso.autorizzato([GoogleAuth.permessoGmail]), "permessi concessi letti dalla risposta di Google: calendario e Gmail")
+GmailFinto.permessiConcessi = nil
 
 print(falliti == 0 ? "\nTUTTO OK (\(superati) controlli)" : "\n\(falliti) VERIFICHE FALLITE su \(superati + falliti)")
 exit(falliti == 0 ? 0 : 1)

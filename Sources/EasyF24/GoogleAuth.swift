@@ -10,6 +10,8 @@ struct CredenzialiGoogle: Codable, Equatable {
     var clientId: String
     var clientSecret: String
     var refreshToken: String?
+    /// Permessi concessi da Google all'ultimo accesso (nil nelle versioni precedenti: solo Gmail).
+    var permessi: [String]?
 
     /// Legge il file JSON scaricato da Google Cloud.
     static func daFileGoogle(_ dati: Data) -> CredenzialiGoogle? {
@@ -18,7 +20,7 @@ struct CredenzialiGoogle: Codable, Equatable {
               let clientId = blocco["client_id"] as? String,
               let clientSecret = blocco["client_secret"] as? String
         else { return nil }
-        return CredenzialiGoogle(clientId: clientId, clientSecret: clientSecret, refreshToken: nil)
+        return CredenzialiGoogle(clientId: clientId, clientSecret: clientSecret, refreshToken: nil, permessi: nil)
     }
 }
 
@@ -55,7 +57,11 @@ enum ErroreGmail: LocalizedError {
 final class GoogleAuth {
     static let servizioPredefinito = "Easy F24 – Gmail"
     private static let accountPortachiavi = "google-oauth"
-    private static let scope = "https://www.googleapis.com/auth/gmail.readonly"
+    /// Lettura di Gmail.
+    static let permessoGmail = "https://www.googleapis.com/auth/gmail.readonly"
+    /// Creare, spostare ed eliminare eventi del calendario e vedere l'elenco dei calendari.
+    static let permessiCalendario = ["https://www.googleapis.com/auth/calendar.events",
+                                     "https://www.googleapis.com/auth/calendar.calendarlist.readonly"]
 
     private(set) var credenziali: CredenzialiGoogle?
     private let servizioPortachiavi: String?
@@ -76,6 +82,13 @@ final class GoogleAuth {
 
     var collegato: Bool { credenziali?.refreshToken != nil }
 
+    /// Google ha concesso tutti questi permessi (gli accessi delle versioni precedenti valgono solo per Gmail).
+    func autorizzato(_ permessi: [String]) -> Bool {
+        guard collegato else { return false }
+        let concessi = credenziali?.permessi ?? [GoogleAuth.permessoGmail]
+        return permessi.allSatisfy { concessi.contains($0) }
+    }
+
     /// Salva ID e secret dell'app Google. Restituisce true se sono cambiati
     /// (in quel caso il collegamento precedente non vale più).
     @discardableResult
@@ -90,7 +103,9 @@ final class GoogleAuth {
     }
 
     /// Apre il browser sulla pagina di accesso di Google. `fine` arriva sul main thread.
-    func accedi(fine: @escaping (Result<Void, ErroreGmail>) -> Void) {
+    /// I permessi già concessi restano validi (`include_granted_scopes`): chiedere il calendario
+    /// non toglie l'accesso a Gmail.
+    func accedi(permessi: [String] = [GoogleAuth.permessoGmail], fine: @escaping (Result<Void, ErroreGmail>) -> Void) {
         guard let credenziali = credenziali else {
             fine(.failure(.credenzialiMancanti))
             return
@@ -116,7 +131,8 @@ final class GoogleAuth {
                     URLQueryItem(name: "client_id", value: credenziali.clientId),
                     URLQueryItem(name: "redirect_uri", value: redirect),
                     URLQueryItem(name: "response_type", value: "code"),
-                    URLQueryItem(name: "scope", value: GoogleAuth.scope),
+                    URLQueryItem(name: "scope", value: permessi.joined(separator: " ")),
+                    URLQueryItem(name: "include_granted_scopes", value: "true"),
                     URLQueryItem(name: "access_type", value: "offline"),
                     URLQueryItem(name: "prompt", value: "consent"),
                     URLQueryItem(name: "code_challenge", value: sfida),
@@ -240,6 +256,13 @@ final class GoogleAuth {
         guard let token = json["access_token"] as? String else { return nil }
         accessToken = token
         scadenzaAccessToken = Date().addingTimeInterval((json["expires_in"] as? Double) ?? 3600)
+        if let elenco = json["scope"] as? String {
+            let permessi = elenco.split(separator: " ").map(String.init).sorted()
+            if permessi != credenziali?.permessi {
+                credenziali?.permessi = permessi
+                salva()
+            }
+        }
         return token
     }
 

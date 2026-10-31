@@ -320,7 +320,9 @@ struct FoglioGmail: View {
 /// Riga in fondo alla finestra con lo stato del collegamento a Gmail.
 struct BarraGmail: View {
     @ObservedObject var gmail: GmailSync
+    @ObservedObject var calendario: CalendarioSync
     let onImpostazioni: () -> Void
+    let onCalendario: () -> Void
 
     var body: some View {
         HStack(spacing: 8) {
@@ -343,6 +345,14 @@ struct BarraGmail: View {
                 Button("Controlla ora", action: gmail.controlla)
             }
             if gmail.stato == .collegato {
+                Button(action: onCalendario) {
+                    HStack(spacing: 4) {
+                        Image(systemName: calendario.errore == nil ? "calendar" : "exclamationmark.triangle.fill")
+                            .foregroundColor(calendario.errore == nil ? (calendario.impostazioni.attivo ? .accentColor : .secondary) : .orange)
+                        Text("Calendario…")
+                    }
+                }
+                .help(calendario.errore ?? (calendario.impostazioni.attivo ? "Google Calendar attivo" : "Google Calendar spento"))
                 Button("Gmail…", action: onImpostazioni)
             } else {
                 Button("Collega a Gmail", action: onImpostazioni)

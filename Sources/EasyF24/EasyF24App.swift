@@ -5,11 +5,15 @@ struct EasyF24App: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var store: F24Store
     @StateObject private var gmail: GmailSync
+    @StateObject private var calendario: CalendarioSync
 
     init() {
         let store = F24Store()
+        let gmail = GmailSync(store: store)
         _store = StateObject(wrappedValue: store)
-        _gmail = StateObject(wrappedValue: GmailSync(store: store))
+        _gmail = StateObject(wrappedValue: gmail)
+        // Stesso accesso a Google di Gmail.
+        _calendario = StateObject(wrappedValue: CalendarioSync(store: store, auth: gmail.auth))
     }
 
     var body: some Scene {
@@ -17,6 +21,7 @@ struct EasyF24App: App {
             ContentView()
                 .environmentObject(store)
                 .environmentObject(gmail)
+                .environmentObject(calendario)
                 .environment(\.locale, Formato.locale)
         }
         .commands {

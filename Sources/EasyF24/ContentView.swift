@@ -4,6 +4,7 @@ import SwiftUI
 struct ContentView: View {
     @EnvironmentObject private var store: F24Store
     @EnvironmentObject private var gmail: GmailSync
+    @EnvironmentObject private var calendario: CalendarioSync
     @State private var foglio: Foglio?
     @State private var avviso: Avviso?
     @State private var oggi = Date()
@@ -15,7 +16,7 @@ struct ContentView: View {
         VStack(spacing: 0) {
             colonne
             Divider()
-            BarraGmail(gmail: gmail, onImpostazioni: { foglio = .gmail })
+            BarraGmail(gmail: gmail, calendario: calendario, onImpostazioni: { foglio = .gmail }, onCalendario: { foglio = .calendario })
         }
         .frame(minWidth: 820, minHeight: 480)
         .background(Color(NSColor.windowBackgroundColor))
@@ -39,6 +40,7 @@ struct ContentView: View {
         }
         .onAppear {
             gmail.avvia()
+            calendario.avvia()
         }
     }
 
@@ -118,6 +120,8 @@ struct ContentView: View {
                             onAnnulla: chiudiFoglio)
         case .gmail:
             FoglioGmail(gmail: gmail, onChiudi: chiudiFoglio)
+        case .calendario:
+            FoglioCalendario(calendario: calendario, gmail: gmail, onChiudi: chiudiFoglio)
         }
     }
 
@@ -153,11 +157,13 @@ enum Foglio: Identifiable {
     case modifica(F24)
     case paga(F24)
     case gmail
+    case calendario
 
     var id: String {
         switch self {
         case .nuovo: return "nuovo"
         case .gmail: return "gmail"
+        case .calendario: return "calendario"
         case .modifica(let f24): return "modifica-" + f24.id.uuidString
         case .paga(let f24): return "paga-" + f24.id.uuidString
         }

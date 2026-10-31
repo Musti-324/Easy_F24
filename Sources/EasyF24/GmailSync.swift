@@ -745,7 +745,7 @@ final class GmailSync: ObservableObject {
 }
 
 /// Esegue `passo` su ogni elemento, uno dopo l'altro; si ferma al primo errore.
-private func inSequenza<Elemento, Risultato>(
+func inSequenza<Elemento, Risultato>(
     _ elementi: [Elemento],
     passo: @escaping (Elemento, @escaping (Result<Risultato, ErroreGmail>) -> Void) -> Void,
     fine: @escaping (Result<[Risultato], ErroreGmail>) -> Void

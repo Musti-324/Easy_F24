@@ -88,6 +88,27 @@ Google chiede che ogni app che legge Gmail abbia delle proprie credenziali. Sono
 > Dopo un aggiornamento dell'app, macOS può chiedere una volta il permesso di usare la voce
 > «Easy F24 – Gmail» del Portachiavi: scegli **Consenti sempre**.
 
+## Google Calendar (dalla versione 2.0)
+
+Funzione facoltativa: si accende e si spegne dal pulsante **Calendario…** in basso (serve Gmail collegato).
+
+- **Accesa:** ogni F24 da pagare diventa un evento nel giorno della scadenza. Alla prima accensione l'app
+  controlla gli F24 già in lista: se nel calendario c'è già un evento di quel giorno con «F24» nel titolo
+  e lo stesso importo non fa nulla, altrimenti lo aggiunge. Poi, a ogni «Controlla ora», gli F24 nuovi
+  finiscono nell'app e nel calendario.
+- **Pagato:** quando segni un F24 come pagato (o lo elimini) l'evento viene tolto; l'F24 va tra i pagati.
+  Se cambi la scadenza l'evento si sposta; se lo riporti tra i da pagare torna nel calendario.
+- **Impostazioni:** quale calendario, evento di tutto il giorno o a un orario, notifiche di Google
+  Calendar (fino a 5: notifica o email, minuti/ore/giorni/settimane prima, oppure quelle predefinite del
+  calendario). Le nuove impostazioni valgono solo per gli eventi creati da quel momento.
+- **Leggera:** l'app ricorda quale evento corrisponde a ogni F24 (`calendario.json`) e chiama Google
+  solo se c'è qualcosa da aggiungere, spostare o togliere.
+- **Spenta:** l'app funziona come sempre, senza calendario (gli eventi già creati restano).
+
+**Prima configurazione:** nello stesso progetto di Google Cloud usato per Gmail abilita
+**Google Calendar API** ([pagina dell'API](https://console.cloud.google.com/apis/library/calendar-json.googleapis.com)),
+poi in Easy F24 premi **Calendario…** → **Autorizza Google Calendar…**. L'accesso a Gmail resta valido.
+
 ## Sicurezza
 
 **Cosa fa l'app per proteggerti**
@@ -198,6 +219,8 @@ Sources/EasyF24/
   Portachiavi.swift  salvataggio delle credenziali nel Portachiavi
   VerificaMittente.swift  controlli contro le email false (indirizzo, SPF/DKIM/DMARC)
   Rete.swift         connessione verso Google senza cache né cookie
+  CalendarioGoogle.swift  API di Google Calendar e sincronizzazione F24 ↔ eventi
+  FoglioCalendario.swift  impostazioni di Google Calendar
 Resources/
   EasyF24.entitlements        permessi della sandbox
   container-migration.plist   spostamento dei dati delle versioni precedenti nella sandbox
