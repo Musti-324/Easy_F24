@@ -46,8 +46,6 @@ struct ContentView: View {
         HStack(spacing: 0) {
             Colonna(titolo: "Da pagare",
                     colore: .orange,
-                    etichettaTotale: "Totale da pagare",
-                    totaleInEvidenza: true,
                     elementi: store.daPagare,
                     messaggioVuoto: "Nessun F24 da pagare.\nPremi «Nuovo F24» per aggiungerne uno.",
                     accessorio: {
@@ -66,16 +64,13 @@ struct ContentView: View {
                                      onPaga: { foglio = .paga(f24) },
                                      onModifica: { foglio = .modifica(f24) },
                                      onElimina: { avviso = .elimina(f24) },
-                                     onApriEmail: apriEmail(di: f24),
-                                     onAnalizza: analizza(f24))
+                                     onApriEmail: apriEmail(di: f24))
                     })
 
             Divider()
 
             Colonna(titolo: "Pagati",
                     colore: .green,
-                    etichettaTotale: "Totale pagato",
-                    totaleInEvidenza: false,
                     elementi: store.pagati,
                     messaggioVuoto: "Ancora nessun F24 pagato.",
                     accessorio: { EmptyView() },
@@ -84,19 +79,12 @@ struct ContentView: View {
                                    onModifica: { foglio = .modifica(f24) },
                                    onRiporta: { store.riportaDaPagare(f24) },
                                    onElimina: { avviso = .elimina(f24) },
-                                   onApriEmail: apriEmail(di: f24),
-                                   onAnalizza: analizza(f24))
+                                   onApriEmail: apriEmail(di: f24))
                     })
         }
     }
 
     /// Azione "Apri l'email in Gmail" per gli F24 importati da Gmail.
-    /// Azione "Analizza il PDF da Gmail" per gli F24 importati da Gmail.
-    private func analizza(_ f24: F24) -> (() -> Void)? {
-        guard f24.gmailMessageId != nil else { return nil }
-        return { foglio = .analisi(f24) }
-    }
-
     private func apriEmail(di f24: F24) -> (() -> Void)? {
         guard let id = f24.gmailMessageId else { return nil }
         return { gmail.apriEmail(id) }
@@ -128,8 +116,6 @@ struct ContentView: View {
                             onAnnulla: chiudiFoglio)
         case .gmail:
             FoglioGmail(gmail: gmail, onChiudi: chiudiFoglio)
-        case .analisi(let f24):
-            FoglioAnalisi(gmail: gmail, f24: f24, onChiudi: chiudiFoglio)
         }
     }
 
@@ -158,13 +144,11 @@ enum Foglio: Identifiable {
     case modifica(F24)
     case paga(F24)
     case gmail
-    case analisi(F24)
 
     var id: String {
         switch self {
         case .nuovo: return "nuovo"
         case .gmail: return "gmail"
-        case .analisi(let f24): return "analisi-" + f24.id.uuidString
         case .modifica(let f24): return "modifica-" + f24.id.uuidString
         case .paga(let f24): return "paga-" + f24.id.uuidString
         }
@@ -188,10 +172,6 @@ enum Avviso: Identifiable {
 struct Colonna<Accessorio: View, Riga: View>: View {
     let titolo: String
     let colore: Color
-    /// Es. "Totale da pagare": la somma degli importi, sempre visibile sotto il titolo.
-    let etichettaTotale: String
-    /// Totale scritto in grande e in nero (colonna "Da pagare").
-    let totaleInEvidenza: Bool
     let elementi: [F24]
     let messaggioVuoto: String
     let accessorio: () -> Accessorio
@@ -237,30 +217,17 @@ struct Colonna<Accessorio: View, Riga: View>: View {
                 Spacer()
                 accessorio()
             }
-            rigaTotale
-        }
-        .padding(.horizontal, 16)
-        .frame(height: 76)
-    }
-
-    /// "Totale da pagare: 1.732,30 €", sempre presente (anche a 0,00 €). Gli F24 senza importo
-    /// non entrano nella somma: lo si dice, così il totale non sembra più basso del vero.
-    private var rigaTotale: some View {
-        let importi = elementi.compactMap { $0.importoCentesimi }
-        let senzaImporto = elementi.count - importi.count
-        return HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text(etichettaTotale + ":")
+            Text(totale)
                 .font(.subheadline)
                 .foregroundColor(.secondary)
-            Text(Formato.euro(importi.reduce(0, +)))
-                .font(totaleInEvidenza ? Font.title3.bold().monospacedDigit() : Font.subheadline.monospacedDigit())
-                .foregroundColor(totaleInEvidenza ? .primary : .secondary)
-            if senzaImporto > 0 {
-                Text(senzaImporto == 1 ? "· 1 F24 senza importo" : "· \(senzaImporto) F24 senza importo")
-                    .font(.caption)
-                    .foregroundColor(.orange)
-                    .help("Questi F24 non hanno un importo e non sono compresi nel totale: aprili con un doppio clic per inserirlo.")
-            }
         }
+        .padding(.horizontal, 16)
+        .frame(height: 72)
+    }
+
+    private var totale: String {
+        let importi = elementi.compactMap { $0.importoCentesimi }
+        // Riga sempre presente (anche vuota) per allineare le due intestazioni.
+        return importi.isEmpty ? " " : "Totale " + Formato.euro(importi.reduce(0, +))
     }
 }

@@ -2,7 +2,6 @@
 // Si eseguono con ./scripts/test.sh: nessuna connessione a Gmail vera.
 import AppKit
 import Foundation
-import PDFKit
 
 var falliti = 0
 var superati = 0
@@ -19,65 +18,30 @@ let cartella = CommandLine.arguments[1]
 let cal = Calendar.current
 func giorno(_ g: Int, _ m: Int, _ a: Int) -> Date { cal.date(from: DateComponents(year: a, month: m, day: g))! }
 
-/// Un testo da scrivere in un punto preciso della pagina A4 (595 × 842 punti, y misurata dal basso).
-typealias Scritta = (testo: String, x: CGFloat, y: CGFloat)
-
-/// PDF di una o più pagine, come quelli dei programmi del commercialista.
-func pdf(_ pagine: [[Scritta]], rotazione: Int = 0) -> Data {
+/// PDF con testo, come quelli dei programmi del commercialista.
+func pdf(_ righe: [String]) -> Data {
     let dati = NSMutableData()
     var box = CGRect(x: 0, y: 0, width: 595, height: 842)
     let ctx = CGContext(consumer: CGDataConsumer(data: dati as CFMutableData)!, mediaBox: &box, nil)!
-    for scritte in pagine {
-        ctx.beginPDFPage(nil)
-        NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: false)
-        for scritta in scritte {
-            (scritta.testo as NSString).draw(at: NSPoint(x: scritta.x, y: scritta.y), withAttributes: [.font: NSFont.systemFont(ofSize: 9)])
-        }
-        ctx.endPDFPage()
+    ctx.beginPDFPage(nil)
+    NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: false)
+    for (i, riga) in righe.enumerated() {
+        (riga as NSString).draw(at: NSPoint(x: 40, y: 800 - i * 20), withAttributes: [.font: NSFont.systemFont(ofSize: 11)])
     }
+    ctx.endPDFPage()
     ctx.closePDF()
-    guard rotazione != 0, let documento = PDFDocument(data: dati as Data) else { return dati as Data }
-    for indice in 0..<documento.pageCount {
-        documento.page(at: indice)?.rotation = rotazione
-    }
-    return documento.dataRepresentation()!
+    return dati as Data
 }
-
-/// Pagina disposta come il modello F24: intestazione e contribuente in alto, sezioni al centro,
-/// "SALDO FINALE" in basso (y = 200, cioè al 24% dell'altezza) e gli estremi del versamento in fondo.
-func paginaF24(sezioni: [String], saldo: String, ySaldo: CGFloat = 200, valorePrimaDellEtichetta: Bool = false) -> [Scritta] {
-    var scritte: [Scritta] = [
-        ("MODELLO DI PAGAMENTO UNIFICATO F24", 40, 805),
-        ("DELEGA IRREVOCABILE A: BANCA ESEMPIO  AGENZIA 123", 40, 785),
-        ("CONTRIBUENTE  CODICE FISCALE RSSMRA70D03H501X", 40, 750),
-        ("ROSSI MARIO  nato il 03/04/1970  a ROMA", 40, 732),
-    ]
-    for (i, riga) in sezioni.enumerated() {
-        scritte.append((riga, 40, 620 - CGFloat(i) * 22))
-    }
-    if valorePrimaDellEtichetta {
-        // Il valore sta sulla riga sopra l'etichetta: nel testo estratto viene prima.
-        scritte += [(saldo, 470, ySaldo + 14), ("SALDO FINALE", 300, ySaldo)]
-    } else {
-        scritte += [("SALDO FINALE", 300, ySaldo), ("EURO +", 400, ySaldo), (saldo, 470, ySaldo)]
-    }
-    scritte += [("ESTREMI DEL VERSAMENTO  DATA ____/____/______  CODICE BANCA", 40, 120),
-                ("FIRMA", 40, 60)]
-    return scritte
-}
-/// Pagina piena di testo senza F24 (lettere, istruzioni, allegati).
-func paginaTesto(_ etichetta: String, importo: String = "") -> [Scritta] {
-    (0..<70).map { riga in ("\(etichetta) – riga \(riga) del documento allegato \(importo)", 40, 800 - CGFloat(riga) * 11) }
-}
-let pdfIMU = pdf([paginaF24(sezioni: ["SEZIONE IMU  3918  2026  625,00", "SEZIONE IMU  3918  2025  625,00", "TOTALE  1.250,00"], saldo: "1.250,00")])
-let pdfINPS = pdf([paginaF24(sezioni: ["SEZIONE INPS  CXX  482,30"], saldo: "482,30")])
-let pdfIVA = pdf([paginaF24(sezioni: ["SEZIONE ERARIO  6031  2026  2.150,75"], saldo: "2.150,75")])
-let pdfLettera = pdf([[("Gentile cliente, in allegato i modelli da pagare.", 40, 780)]])
+let pdfIMU = pdf(["MODELLO DI PAGAMENTO UNIFICATO F24", "CONTRIBUENTE  ROSSI MARIO  nato il 03/04/1970",
+                  "SEZIONE IMU  3918  2026  625,00", "SALDO FINALE  EURO  1.250,00"])
+let pdfINPS = pdf(["F24 - DELEGA IRREVOCABILE", "INPS  CXX  482,30", "SALDO FINALE 482,30"])
+let pdfIVA = pdf(["F24", "ERARIO 6031 2026 2.150,75", "SALDO FINALE 2.150,75"])
+let pdfLettera = pdf(["Gentile cliente, in allegato i modelli."])
 
 // MARK: - Lettura di importo e scadenza
 
 print("— Lettura di importo e scadenza")
-verifica(LettoreF24.leggi(pdf: pdfIMU)?.saldo?.centesimi == 125000, "PDFKit legge il saldo finale del PDF")
+verifica(LettoreF24.testo(pdf: pdfIMU)?.contains("SALDO FINALE") == true, "PDFKit legge il testo del PDF")
 let imu = LettoreF24.moduli(messaggioId: "m1", oggetto: "R: MOD. F24 saldo IMU - scadenza 16/12/2026", corpo: "Buongiorno, in allegato.",
                             ricevutoIl: giorno(28, 10, 2026), pdf: [.init(nome: "F24_IMU.pdf", dati: pdfIMU)])
 verifica(imu.count == 1 && imu[0].importoCentesimi == 125000, "importo dal SALDO FINALE: 1.250,00")
@@ -97,75 +61,7 @@ verifica(due.map { $0.importoCentesimi ?? 0 } == [48230, 215075], "un F24 per og
 verifica(due.map { $0.descrizione } == ["MOD. F24 scad. 16.11.26 – INPS", "MOD. F24 scad. 16.11.26 – IVA"], "descrizioni con il nome del file")
 verifica(due.allSatisfy { $0.scadenza == giorno(16, 11, 2026) }, "data con anno a due cifre")
 let html = LettoreF24.togliHTML("<p>Totale&nbsp;<b>&euro; 1.000,00</b></p><style>p{}</style>")
-verifica(LettoreF24.importo(lettura: nil, testoEmail: html)?.centesimi == 100000, "email in HTML")
-
-print("— Avvisi precisi: importo o scadenza")
-// Come l'email reale: due moduli PDF senza saldo leggibile, scadenza scritta nel testo.
-let pdfSenzaSaldo = pdf([[("F24 RATE MINIMALE INPS", 40, 805), ("SEZIONE INPS  CF  2026", 40, 600)]])
-let rate = LettoreF24.moduli(messaggioId: "r", oggetto: "N. 2 MOD. F24 PER IL VERSAMENTO RATE MINIMALE INPS 2026",
-                             corpo: "In allegato i modelli con scadenza 16/11/2026.", ricevutoIl: giorno(28, 10, 2026),
-                             pdf: [.init(nome: "F24NoCalc.pdf", dati: pdfSenzaSaldo), .init(nome: "F24NoCalc (1).pdf", dati: pdfSenzaSaldo)])
-verifica(rate.count == 2 && rate.allSatisfy { $0.scadenza == giorno(16, 11, 2026) && !$0.scadenzaDaVerificare },
-         "due moduli, scadenza dal testo dell'email: non da verificare")
-verifica(rate.allSatisfy { $0.importoCentesimi == nil && $0.importoDaVerificare }
-         && rate[0].avvisoGmail == "importo non trovato: inseriscilo con un doppio clic",
-         "avviso solo sull'importo mancante: «\(rate[0].avvisoGmail ?? "")»")
-var conImporto = F24(descrizione: "x", importoCentesimi: 100, scadenza: giorno(1, 1, 2027), gmailMessageId: "x",
-                     importoDaVerificare: true, scadenzaDaVerificare: true)
-verifica(conImporto.avvisoGmail == "controlla l'importo · controlla la scadenza", "importo e scadenza incerti: entrambi segnalati")
-conImporto.daVerificare = false
-verifica(conImporto.avvisoGmail == nil && !conImporto.importoDaVerificare && !conImporto.scadenzaDaVerificare, "dopo la modifica nessun avviso")
-let json18 = #"{"descrizione":"Vecchio","id":"11111111-2222-3333-4444-555555555555","scadenza":"2026-12-08T23:00:00Z","gmailMessageId":"g","daVerificare":true}"#
-let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
-let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
-let dal18 = try! decoder.decode(F24.self, from: Data(json18.utf8))
-verifica(dal18.importoDaVerificare && dal18.scadenzaDaVerificare, "archivio della 1.8 con un solo avviso: vale per entrambi")
-let riletto = try! decoder.decode(F24.self, from: encoder.encode(dal18))
-verifica(riletto == dal18 && String(data: try! encoder.encode(dal18), encoding: .utf8)!.contains("importoDaVerificare"), "salvato e riletto con i nuovi avvisi")
-
-// MARK: - Lettura del PDF solo dove serve
-
-print("— Lettura del PDF solo dove serve")
-let standard = LettoreF24.leggi(pdf: pdfIMU)!
-verifica(standard.saldo?.centesimi == 125000 && standard.saldo?.sicuro == true && standard.pagineLette == 1 && standard.zoneLette == 1,
-         "F24 standard: saldo trovato nella prima fascia bassa, 1 pagina e 1 fascia lette")
-verifica(!standard.testoLetto.contains("03/04/1970") && !standard.testoLetto.contains("RSSMRA"),
-         "i dati del contribuente in alto (data di nascita, codice fiscale) non vengono letti")
-let lungo = pdf([paginaF24(sezioni: ["SEZIONE ERARIO  1001  2026  310,00"], saldo: "310,00")]
-                + (2...30).map { paginaTesto("Istruzioni pagina \($0)", importo: "SALDO FINALE 9.999,99") })
-let letturaLunga = LettoreF24.leggi(pdf: lungo)!
-let testoCompleto = PDFDocument(data: lungo)!.string ?? ""
-verifica(letturaLunga.saldo?.centesimi == 31000 && letturaLunga.pagineLette == 1,
-         "PDF di 30 pagine: legge solo la prima e si ferma al saldo (ignora i «SALDO FINALE» delle pagine dopo)")
-verifica(letturaLunga.testoLetto.count * 20 < testoCompleto.count,
-         "testo letto: \(letturaLunga.testoLetto.count) caratteri invece di \(testoCompleto.count) dell'intero documento")
-var inizio = Date()
-for _ in 0..<5 { _ = LettoreF24.leggi(pdf: lungo) }
-let tempoZone = Date().timeIntervalSince(inizio) / 5
-inizio = Date()
-for _ in 0..<5 { _ = PDFDocument(data: lungo)?.string }
-let tempoTutto = Date().timeIntervalSince(inizio) / 5
-print(String(format: "     (tempo: %.1f ms leggendo le fasce, %.1f ms leggendo tutto il documento)", tempoZone * 1000, tempoTutto * 1000))
-verifica(tempoZone < tempoTutto, "più veloce che leggere tutto il documento")
-
-let spostato = LettoreF24.leggi(pdf: pdf([paginaF24(sezioni: ["SEZIONE INPS  CXX  77,00"], saldo: "77,00", ySaldo: 500)]))!
-verifica(spostato.saldo?.centesimi == 7700 && spostato.zoneLette == 2, "saldo più in alto del solito: trovato nella seconda fascia (ricerca di riserva)")
-let primaEtichetta = LettoreF24.leggi(pdf: pdf([paginaF24(sezioni: ["SEZIONE IMU  3918  2026  58,00"], saldo: "58,00", valorePrimaDellEtichetta: true)]))!
-verifica(primaEtichetta.saldo?.centesimi == 5800 && primaEtichetta.saldo?.sicuro == false,
-         "valore scritto prima dell'etichetta (già superato): trovato tornando indietro, segnato da verificare")
-let conLettera = LettoreF24.leggi(pdf: pdf([paginaTesto("Lettera dello studio"), paginaF24(sezioni: ["SEZIONE ERARIO  4001  2026  900,00"], saldo: "900,00")]))!
-verifica(conLettera.saldo?.centesimi == 90000 && conLettera.pagineLette == 2, "lettera in prima pagina e F24 nella seconda: trovato a pagina 2")
-let senzaSaldo = LettoreF24.leggi(pdf: pdf((1...20).map { paginaTesto("Documento \($0)", importo: "123,45") }))!
-verifica(senzaSaldo.saldo == nil && senzaSaldo.pagineLette == LettoreF24.massimoPagine && senzaSaldo.zoneLette == 2 * LettoreF24.massimoPagine,
-         "20 pagine senza saldo: si ferma dopo \(LettoreF24.massimoPagine) pagine invece di leggerle tutte")
-let saldoInAlto = LettoreF24.leggi(pdf: pdf([[("MODELLO F24", 40, 805), ("SALDO FINALE 4.444,44", 300, 770)]]))!
-verifica(saldoInAlto.saldo == nil && saldoInAlto.intestazione.contains("MODELLO F24"),
-         "«SALDO FINALE» nella parte alta (non è il posto del modello): ignorato; l'intestazione dice comunque che è un F24")
-verifica(LettoreF24.sembraF24(saldoInAlto, nomeFile: "documento.pdf") && !LettoreF24.sembraF24(LettoreF24.leggi(pdf: pdfLettera), nomeFile: "lettera.pdf"),
-         "riconosce un F24 dall'intestazione, non una lettera")
-let ruotato = LettoreF24.leggi(pdf: pdf([paginaF24(sezioni: ["SEZIONE ERARIO  1001  2026  64,00"], saldo: "64,00")], rotazione: 90))!
-verifica(ruotato.saldo?.centesimi == 6400 && ruotato.zoneLette == 1, "pagina ruotata: letta per intero (con il limite di caratteri)")
-verifica(LettoreF24.leggi(pdf: Data("non è un pdf".utf8)) == nil, "file che non è un PDF: scartato")
+verifica(LettoreF24.importo(testoPDF: nil, testoEmail: html)?.centesimi == 100000, "email in HTML")
 
 // MARK: - Gmail simulato
 
@@ -445,62 +341,6 @@ let dicembre = CalendarioMese.giorni(del: giorno(16, 12, 2026))
 verifica(dicembre.count == 42 && cal.isDate(dicembre[0], inSameDayAs: giorno(30, 11, 2026)), "dicembre 2026: 42 caselle da lunedì 30/11")
 verifica(CalendarioMese.giorni(del: giorno(10, 3, 2026)).allSatisfy { cal.component(.hour, from: $0) == 0 }, "cambio dell'ora legale: caselle a mezzanotte")
 verifica(CalendarioMese.nomiGiorni == ["LUN", "MAR", "MER", "GIO", "VEN", "SAB", "DOM"], "settimana da lunedì, nomi in italiano")
-
-print("— Analisi del PDF")
-let analisiStandard = AnalisiPDF(.init(nome: "F24_IMU.pdf", dati: pdfIMU))
-verifica(analisiStandard.pagine == 1 && analisiStandard.haTesto && analisiStandard.lettura?.saldo?.centesimi == 125000,
-         "PDF standard: testo leggibile e saldo trovato")
-verifica(analisiStandard.righe.contains { $0.testo.contains("SALDO FINALE") && (20...28).contains($0.y) },
-         "riga «SALDO FINALE» con la sua posizione (y ≈ 24% dal basso)")
-verifica(!analisiStandard.resoconto.contains("RSSMRA") && !analisiStandard.resoconto.contains("03/04/1970") && !analisiStandard.resoconto.contains("ROSSI"),
-         "nel resoconto non c'è la parte alta con nome, codice fiscale e data di nascita")
-// Modulo compilabile: l'importo sta in un campo del modulo, non nel testo della pagina.
-let compilabile: Data = {
-    let documento = PDFDocument(data: pdf([[("MODELLO F24", 40, 805), ("SALDO FINALE", 300, 200), ("EURO +", 400, 200)]]))!
-    let campo = PDFAnnotation(bounds: CGRect(x: 460, y: 195, width: 90, height: 16), forType: .widget, withProperties: nil)
-    campo.widgetFieldType = .text
-    campo.fieldName = "saldo_finale"
-    campo.widgetStringValue = "528,00"
-    documento.page(at: 0)!.addAnnotation(campo)
-    return documento.dataRepresentation()!
-}()
-let analisiCampi = AnalisiPDF(.init(nome: "F24NoCalc.pdf", dati: compilabile))
-verifica(analisiCampi.campi.contains { $0.nome == "saldo_finale" && $0.valore == "528,00" }, "importo in un campo compilabile: mostrato tra i campi del modulo")
-verifica(analisiCampi.resoconto.contains("saldo finale NON trovato") && analisiCampi.resoconto.contains("«saldo_finale» = «528,00»"),
-         "il resoconto spiega che il testo non basta e mostra il campo")
-let soloImmagine: Data = {
-    let dati = NSMutableData()
-    var box = CGRect(x: 0, y: 0, width: 595, height: 842)
-    let ctx = CGContext(consumer: CGDataConsumer(data: dati as CFMutableData)!, mediaBox: &box, nil)!
-    ctx.beginPDFPage(nil)
-    ctx.setFillColor(gray: 0.3, alpha: 1)
-    ctx.fill(CGRect(x: 40, y: 180, width: 500, height: 40))
-    ctx.endPDFPage()
-    ctx.closePDF()
-    return dati as Data
-}()
-let analisiImmagine = AnalisiPDF(.init(nome: "scansione.pdf", dati: soloImmagine))
-verifica(!analisiImmagine.haTesto && analisiImmagine.righe.isEmpty && analisiImmagine.resoconto.contains("NO (è un'immagine o una scansione)"),
-         "PDF senza testo (scansione): lo dice chiaramente")
-verifica(AnalisiPDF(.init(nome: "x.pdf", dati: Data("non è un pdf".utf8))).resoconto.contains("non si apre come PDF"), "file non PDF: segnalato")
-
-GmailFinto.refreshScaduto = false
-let authAnalisi = GoogleAuth(servizioPortachiavi: nil, credenziali: CredenzialiGoogle(clientId: "id", clientSecret: "secret", refreshToken: "refresh"))
-let gmailAnalisi = GmailSync(store: F24Store(fileURL: URL(fileURLWithPath: "\(cartella)/analisi/f24.json")), auth: authAnalisi)
-var analisiGmail: Result<[AnalisiPDF], ErroreGmail>?
-gmailAnalisi.analizzaPDF(di: F24(descrizione: "IMU", scadenza: Date(), gmailMessageId: "imu")) { analisiGmail = $0 }
-attendi { analisiGmail == nil }
-if case .success(let elenco)? = analisiGmail {
-    verifica(elenco.count == 1 && elenco[0].nome == "F24_IMU.pdf" && elenco[0].lettura?.saldo?.centesimi == 125000,
-             "dal Gmail simulato: allegato scaricato in memoria e analizzato")
-} else {
-    verifica(false, "dal Gmail simulato: \(String(describing: analisiGmail))")
-}
-var senzaGmail: Result<[AnalisiPDF], ErroreGmail>?
-gmailAnalisi.analizzaPDF(di: F24(descrizione: "a mano", scadenza: Date())) { senzaGmail = $0 }
-verifica({ if case .failure? = senzaGmail { return true } else { return false } }(), "F24 inserito a mano: niente da analizzare")
-let fileTemporanei = (try? FileManager.default.contentsOfDirectory(atPath: NSTemporaryDirectory())) ?? []
-verifica(!fileTemporanei.contains { $0.hasSuffix(".pdf") }, "nessun PDF scritto nella cartella temporanea")
 
 print(falliti == 0 ? "\nTUTTO OK (\(superati) controlli)" : "\n\(falliti) VERIFICHE FALLITE su \(superati + falliti)")
 exit(falliti == 0 ? 0 : 1)

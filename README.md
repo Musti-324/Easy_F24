@@ -28,7 +28,6 @@ Un gestionale semplicissimo per Mac per tenere traccia degli **F24**:
 | Modificare un F24 | Doppio clic sulla scheda, oppure tasto destro → **Modifica…** |
 | Annullare un pagamento | Tasto destro su un F24 pagato → **Riporta tra i da pagare** |
 | Eliminare un F24 | Tasto destro → **Elimina…** |
-| Capire perché l'importo di un F24 arrivato da Gmail non è stato letto | Tasto destro → **Analizza il PDF da Gmail…** (il PDF viene letto solo in memoria; il risultato si può copiare) |
 | Prendere gli F24 dalle email del commercialista | Pulsante giallo **Collega a Gmail** in basso (vedi sotto) |
 
 ## F24 automatici da Gmail
@@ -44,9 +43,7 @@ Easy F24 può leggere la tua casella Gmail e aggiungere da solo gli F24 che ti m
   vale sempre e solo l'indirizzo esatto, perché lì chiunque può avere una casella.
 - Ricorda l'**ultimo modulo trovato** (`ultimoModulo` in `gmail.json`): a ogni controllo aggiunge solo le email
   arrivate dopo. La prima volta prende solo il modulo più recente, per non riempire la lista con quelli vecchi.
-- Dal PDF allegato legge il **saldo finale** senza leggere tutto il documento: parte dalla fascia bassa
-  della prima pagina, dove il modello F24 lo stampa; se non c'è sale alla parte centrale e, al massimo,
-  prova le prime 3 pagine, poi si ferma e segna l'F24 «da verificare». La **scadenza** la prende dall'oggetto o dal testo dell'email
+- Dal PDF allegato legge il **saldo finale**; la **scadenza** la prende dall'oggetto o dal testo dell'email
   (es. «scadenza 16/12/2026», «da pagare entro il 16 novembre 2026»). Se un'email contiene più moduli PDF,
   ogni modulo diventa un F24.
 - Se non trova importo o scadenza con sicurezza, l'F24 compare con la scritta **«controlla importo e scadenza»**:

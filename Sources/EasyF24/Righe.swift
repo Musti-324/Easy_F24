@@ -8,7 +8,6 @@ struct RigaDaPagare: View {
     let onModifica: () -> Void
     let onElimina: () -> Void
     var onApriEmail: (() -> Void)?
-    var onAnalizza: (() -> Void)?
 
     var body: some View {
         let stato = StatoScadenza(scadenza: f24.scadenza, oggi: oggi)
@@ -37,10 +36,10 @@ struct RigaDaPagare: View {
             if f24.gmailMessageId != nil {
                 HStack(spacing: 4) {
                     Image(systemName: "envelope")
-                    Text(f24.avvisoGmail.map { "Arrivato via Gmail · " + $0 } ?? "Arrivato via Gmail")
+                    Text(f24.daVerificare ? "Arrivato via Gmail · controlla importo e scadenza" : "Arrivato via Gmail")
                 }
                 .font(.caption)
-                .foregroundColor(f24.avvisoGmail == nil ? .secondary : .orange)
+                .foregroundColor(f24.daVerificare ? .orange : .secondary)
             }
         }
         .modifier(StileScheda(bordo: stato.urgente ? stato.colore : nil))
@@ -50,9 +49,6 @@ struct RigaDaPagare: View {
             Button("Modifica…", action: onModifica)
             if let apri = onApriEmail {
                 Button("Apri l'email in Gmail", action: apri)
-            }
-            if let analizza = onAnalizza {
-                Button("Analizza il PDF da Gmail…", action: analizza)
             }
             Divider()
             Button("Elimina…", action: onElimina)
@@ -67,7 +63,6 @@ struct RigaPagata: View {
     let onRiporta: () -> Void
     let onElimina: () -> Void
     var onApriEmail: (() -> Void)?
-    var onAnalizza: (() -> Void)?
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
@@ -96,9 +91,6 @@ struct RigaPagata: View {
             Button("Modifica…", action: onModifica)
             if let apri = onApriEmail {
                 Button("Apri l'email in Gmail", action: apri)
-            }
-            if let analizza = onAnalizza {
-                Button("Analizza il PDF da Gmail…", action: analizza)
             }
             Button("Riporta tra i da pagare", action: onRiporta)
             Divider()
