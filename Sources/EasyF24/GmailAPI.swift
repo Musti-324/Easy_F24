@@ -85,6 +85,9 @@ struct GmailAPI {
             return .failure(.risposta("risposta vuota"))
         }
         let codice = (risposta as? HTTPURLResponse)?.statusCode ?? 0
+        if codice == 404 {
+            return .failure(.nonTrovato)
+        }
         guard codice == 200 else {
             // Es. "Gmail API has not been used in project … or it is disabled".
             let json = (try? JSONSerialization.jsonObject(with: dati)) as? [String: Any]

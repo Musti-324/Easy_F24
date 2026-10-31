@@ -10,17 +10,20 @@ struct F24: Identifiable, Codable, Equatable {
     var pagatoIl: Date?
     /// Id del messaggio Gmail da cui è stato importato (nil se inserito a mano).
     var gmailMessageId: String?
+    /// Nome del PDF allegato da cui è stato letto (nil se letto dal testo dell'email o inserito a mano).
+    var gmailAllegato: String?
     /// Importato da Gmail senza essere sicuri di importo o scadenza: va controllato.
     var daVerificare: Bool
 
     init(id: UUID = UUID(), descrizione: String, importoCentesimi: Int? = nil, scadenza: Date, pagatoIl: Date? = nil,
-         gmailMessageId: String? = nil, daVerificare: Bool = false) {
+         gmailMessageId: String? = nil, gmailAllegato: String? = nil, daVerificare: Bool = false) {
         self.id = id
         self.descrizione = descrizione
         self.importoCentesimi = importoCentesimi
         self.scadenza = scadenza
         self.pagatoIl = pagatoIl
         self.gmailMessageId = gmailMessageId
+        self.gmailAllegato = gmailAllegato
         self.daVerificare = daVerificare
     }
 
@@ -33,6 +36,7 @@ struct F24: Identifiable, Codable, Equatable {
         scadenza = try valori.decode(Date.self, forKey: .scadenza)
         pagatoIl = try valori.decodeIfPresent(Date.self, forKey: .pagatoIl)
         gmailMessageId = try valori.decodeIfPresent(String.self, forKey: .gmailMessageId)
+        gmailAllegato = try valori.decodeIfPresent(String.self, forKey: .gmailAllegato)
         daVerificare = try valori.decodeIfPresent(Bool.self, forKey: .daVerificare) ?? false
     }
 

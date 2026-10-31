@@ -65,7 +65,8 @@ struct ContentView: View {
                                      onModifica: { foglio = .modifica(f24) },
                                      onElimina: { avviso = .elimina(f24) },
                                      onApriEmail: apriEmail(di: f24),
-                                     onRileggi: rileggi(f24))
+                                     onRileggi: rileggi(f24),
+                                     onEliminaDefinitivamente: f24.gmailMessageId == nil ? nil : { avviso = .eliminaDefinitivamente(f24) })
                     })
 
             Divider()
@@ -81,7 +82,8 @@ struct ContentView: View {
                                    onRiporta: { store.riportaDaPagare(f24) },
                                    onElimina: { avviso = .elimina(f24) },
                                    onApriEmail: apriEmail(di: f24),
-                                     onRileggi: rileggi(f24))
+                                     onRileggi: rileggi(f24),
+                                     onEliminaDefinitivamente: f24.gmailMessageId == nil ? nil : { avviso = .eliminaDefinitivamente(f24) })
                     })
         }
     }
@@ -135,8 +137,15 @@ struct ContentView: View {
         switch avviso {
         case .elimina(let f24):
             return Alert(title: Text("Eliminare questo F24?"),
-                         message: Text("«\(f24.descrizione)» verrà eliminato definitivamente."),
+                         message: Text(f24.gmailMessageId == nil
+                                        ? "«\(f24.descrizione)» verrà eliminato definitivamente."
+                                        : "«\(f24.descrizione)» è arrivato da Gmail: se lo elimini verrà riaggiunto al prossimo controllo. Per toglierlo per sempre usa «Elimina definitivamente…»."),
                          primaryButton: .destructive(Text("Elimina")) { store.elimina(f24) },
+                         secondaryButton: .cancel(Text("Annulla")))
+        case .eliminaDefinitivamente(let f24):
+            return Alert(title: Text("Eliminare definitivamente questo F24?"),
+                         message: Text("«\(f24.descrizione)» verrà eliminato e non verrà più riaggiunto da Gmail."),
+                         primaryButton: .destructive(Text("Elimina definitivamente")) { gmail.eliminaDefinitivamente(f24) },
                          secondaryButton: .cancel(Text("Annulla")))
         case .errore(let messaggio):
             return Alert(title: Text("Attenzione"),
@@ -166,11 +175,13 @@ enum Foglio: Identifiable {
 /// Le finestre di conferma o di errore.
 enum Avviso: Identifiable {
     case elimina(F24)
+    case eliminaDefinitivamente(F24)
     case errore(String)
 
     var id: String {
         switch self {
         case .elimina(let f24): return "elimina-" + f24.id.uuidString
+        case .eliminaDefinitivamente(let f24): return "elimina-definitivamente-" + f24.id.uuidString
         case .errore(let messaggio): return "errore-" + messaggio
         }
     }

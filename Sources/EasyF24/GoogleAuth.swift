@@ -28,6 +28,8 @@ enum ErroreGmail: LocalizedError {
     case accessoScaduto
     case rete(String)
     case risposta(String)
+    /// L'email non c'è più su Gmail (es. cancellata).
+    case nonTrovato
 
     var errorDescription: String? {
         switch self {
@@ -41,6 +43,8 @@ enum ErroreGmail: LocalizedError {
             return "Gmail non raggiungibile: \(dettaglio)"
         case .risposta(let dettaglio):
             return "Errore da Google: \(dettaglio)"
+        case .nonTrovato:
+            return "L'email non è più presente su Gmail."
         }
     }
 }

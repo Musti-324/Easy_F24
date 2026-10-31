@@ -9,6 +9,7 @@ struct RigaDaPagare: View {
     let onElimina: () -> Void
     var onApriEmail: (() -> Void)?
     var onRileggi: (() -> Void)?
+    var onEliminaDefinitivamente: (() -> Void)?
 
     var body: some View {
         let stato = StatoScadenza(scadenza: f24.scadenza, oggi: oggi)
@@ -56,6 +57,9 @@ struct RigaDaPagare: View {
             }
             Divider()
             Button("Elimina…", action: onElimina)
+            if let eliminaDefinitivamente = onEliminaDefinitivamente {
+                Button("Elimina definitivamente…", action: eliminaDefinitivamente)
+            }
         }
     }
 }
@@ -68,6 +72,7 @@ struct RigaPagata: View {
     let onElimina: () -> Void
     var onApriEmail: (() -> Void)?
     var onRileggi: (() -> Void)?
+    var onEliminaDefinitivamente: (() -> Void)?
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
@@ -103,6 +108,9 @@ struct RigaPagata: View {
             Button("Riporta tra i da pagare", action: onRiporta)
             Divider()
             Button("Elimina…", action: onElimina)
+            if let eliminaDefinitivamente = onEliminaDefinitivamente {
+                Button("Elimina definitivamente…", action: eliminaDefinitivamente)
+            }
         }
     }
 

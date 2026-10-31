@@ -27,6 +27,7 @@ Un gestionale semplicissimo per Mac per tenere traccia degli **F24**:
 | Segnare un F24 come pagato | Pulsante **Segna pagato**, poi la data del pagamento (di default oggi): clic sul campo data per aprire il calendario |
 | Modificare un F24 | Doppio clic sulla scheda, oppure tasto destro → **Modifica…** |
 | Rileggere importo e scadenza di un F24 arrivato da Gmail | Tasto destro → **Rileggi importo e scadenza dal PDF** |
+| Eliminare un F24 arrivato da Gmail | Tasto destro → **Elimina…**: al controllo successivo viene riaggiunto (utile se lo elimini per sbaglio). Per toglierlo per sempre: **Elimina definitivamente…** |
 | Annullare un pagamento | Tasto destro su un F24 pagato → **Riporta tra i da pagare** |
 | Eliminare un F24 | Tasto destro → **Elimina…** |
 | Prendere gli F24 dalle email del commercialista | Pulsante giallo **Collega a Gmail** in basso (vedi sotto) |
@@ -52,6 +53,10 @@ Easy F24 può leggere la tua casella Gmail e aggiungere da solo gli F24 che ti m
 - Se non trova importo o scadenza con sicurezza, l'F24 compare con la scritta **«controlla importo e scadenza»**:
   basta aprirlo con un doppio clic e correggere. Con il tasto destro → **Apri l'email in Gmail** vedi l'email originale.
 - Controlla all'apertura dell'app, poi ogni 30 minuti e quando premi **Controlla ora**.
+- **F24 eliminati per sbaglio:** l'app ricorda quanti F24 ha importato da ogni email. A ogni controllo
+  confronta questo numero con la lista (senza chiedere nulla a Gmail) e, se ne manca qualcuno, riscarica
+  solo quelle email e lo riaggiunge: tra quelli **da pagare** se la scadenza non è ancora passata,
+  altrimenti tra i **pagati** (con la scadenza come data del pagamento).
 - L'accesso a Gmail è **in sola lettura**. La password di Google non passa mai dall'app: l'accesso si fa nel browser
   e l'app conserva solo un token nel **Portachiavi** di macOS.
 

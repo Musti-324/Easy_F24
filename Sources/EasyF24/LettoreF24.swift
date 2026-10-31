@@ -37,18 +37,18 @@ enum LettoreF24 {
         }
         let base = descrizione(oggetto: oggetto)
         if moduli.isEmpty {
-            return [f24(descrizione: base, testoPDF: nil, oggetto: oggetto, corpo: corpo,
+            return [f24(descrizione: base, testoPDF: nil, allegato: nil, oggetto: oggetto, corpo: corpo,
                         ricevutoIl: ricevutoIl, messaggioId: messaggioId)]
         }
         return moduli.map { modulo in
             let nome = (modulo.nome as NSString).deletingPathExtension
             return f24(descrizione: moduli.count > 1 ? "\(base) – \(nome)" : base,
-                       testoPDF: modulo.testo, oggetto: oggetto, corpo: corpo,
+                       testoPDF: modulo.testo, allegato: modulo.nome, oggetto: oggetto, corpo: corpo,
                        ricevutoIl: ricevutoIl, messaggioId: messaggioId)
         }
     }
 
-    private static func f24(descrizione: String, testoPDF: String?, oggetto: String, corpo: String,
+    private static func f24(descrizione: String, testoPDF: String?, allegato: String?, oggetto: String, corpo: String,
                             ricevutoIl: Date, messaggioId: String) -> Letto {
         let trovatoImporto = importo(testoPDF: testoPDF, testoEmail: oggetto + "\n" + corpo)
         let trovataScadenza = scadenza(oggetto: oggetto, corpo: corpo, testoPDF: testoPDF, ricevutoIl: ricevutoIl)
@@ -56,6 +56,7 @@ enum LettoreF24 {
                       importoCentesimi: trovatoImporto?.centesimi,
                       scadenza: trovataScadenza?.data ?? Calendar.current.startOfDay(for: ricevutoIl),
                       gmailMessageId: messaggioId,
+                      gmailAllegato: allegato,
                       daVerificare: trovatoImporto?.sicuro != true || trovataScadenza?.sicura != true)
         return Letto(f24: f24, importo: trovatoImporto, scadenza: trovataScadenza)
     }
