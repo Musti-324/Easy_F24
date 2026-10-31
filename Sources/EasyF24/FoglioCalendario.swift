@@ -22,7 +22,7 @@ struct FoglioCalendario: View {
                 .font(.title2)
                 .bold()
             Toggle("Aggiungi gli F24 da pagare a Google Calendar", isOn: $bozza.attivo)
-            Text("Ogni F24 da pagare diventa un evento nel giorno della scadenza. Quando lo segni come pagato (o lo elimini) l'evento viene tolto. Spento: l'app funziona come sempre, senza calendario.")
+            Text("Ogni F24 da pagare diventa un evento nel giorno della scadenza. Quando lo segni come pagato il titolo diventa «PAGATO ✅» e le notifiche si spengono; se lo elimini dalla lista, l'evento viene tolto. Spento: l'app funziona come sempre, senza calendario.")
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

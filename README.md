@@ -96,8 +96,11 @@ Funzione facoltativa: si accende e si spegne dal pulsante **Calendario…** in b
   controlla gli F24 già in lista: se nel calendario c'è già un evento di quel giorno con «F24» nel titolo
   e lo stesso importo non fa nulla, altrimenti lo aggiunge. Poi, a ogni «Controlla ora», gli F24 nuovi
   finiscono nell'app e nel calendario.
-- **Pagato:** quando segni un F24 come pagato (o lo elimini) l'evento viene tolto; l'F24 va tra i pagati.
-  Se cambi la scadenza l'evento si sposta; se lo riporti tra i da pagare torna nel calendario.
+- **Pagato:** quando segni un F24 come pagato l'evento resta nel giorno della scadenza ma il titolo
+  diventa **«PAGATO ✅ · F24 · importo · descrizione»** e le notifiche si spengono; l'F24 va tra i pagati.
+  Se lo riporti tra i da pagare tornano titolo e notifiche di prima.
+- **Eliminato:** se elimini un F24 dalla lista (pagato o no), l'evento viene eliminato anche dal calendario.
+  Se cambi la scadenza l'evento si sposta. Gli F24 già pagati prima di accendere il calendario non vengono aggiunti.
 - **Impostazioni:** quale calendario, evento di tutto il giorno o a un orario, notifiche di Google
   Calendar (fino a 5: notifica o email, minuti/ore/giorni/settimane prima, oppure quelle predefinite del
   calendario). Le nuove impostazioni valgono solo per gli eventi creati da quel momento.

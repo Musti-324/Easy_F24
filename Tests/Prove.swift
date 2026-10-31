@@ -695,11 +695,22 @@ verifica(CalendarioFinto.inizio(eventoDicembre) == "2026-12-16T08:30:00"
 
 storeCal.segnaPagato(storeCal.elementi.first { $0.id == rataB.id }!, il: Date())
 aspetta(calSync)
-verifica(CalendarioFinto.evento(di: rataB) == nil && calSync.impostazioni.eventi[rataB.id.uuidString] == nil && storeCal.pagati.contains { $0.id == rataB.id },
-         "segnato come pagato: evento tolto dal calendario, F24 tra i pagati")
+let eventoPagato = CalendarioFinto.evento(di: rataB)
+verifica((eventoPagato?["summary"] as? String)?.hasPrefix("PAGATO ✅") == true && CalendarioFinto.inizio(eventoPagato) == "2027-02-16"
+         && storeCal.pagati.contains { $0.id == rataB.id },
+         "segnato come pagato: l'evento resta nel giorno della scadenza con il titolo «\((eventoPagato?["summary"] as? String) ?? "")»")
+verifica(CalendarioFinto.notifiche(eventoPagato).isEmpty && (eventoPagato?["description"] as? String)?.contains("Pagato il") == true,
+         "evento pagato: notifiche spente, data del pagamento nella descrizione")
+CalendarioFinto.richieste = []
+calSync.sincronizza()
+aspetta(calSync)
+verifica(CalendarioFinto.richieste.isEmpty, "già segnato PAGATO: nessuna altra chiamata a Google")
 storeCal.riportaDaPagare(storeCal.elementi.first { $0.id == rataB.id }!)
 aspetta(calSync)
-verifica(CalendarioFinto.evento(di: rataB) != nil, "riportato tra i da pagare: evento di nuovo nel calendario")
+let eventoRiportato = CalendarioFinto.evento(di: rataB)
+verifica((eventoRiportato?["summary"] as? String)?.hasPrefix("F24 da pagare") == true && CalendarioFinto.notifiche(eventoRiportato) == ["popup-900", "email-9540"]
+         && CalendarioFinto.eventi.count == 3,
+         "riportato tra i da pagare: stesso evento, titolo e notifiche di prima")
 
 var spostato = storeCal.elementi.first { $0.id == f24Dicembre.id }!
 spostato.scadenza = giorno(17, 12, 2026)
@@ -708,9 +719,13 @@ aspetta(calSync)
 verifica(CalendarioFinto.inizio(CalendarioFinto.evento(di: f24Dicembre)) == "2026-12-17T08:30:00"
          && CalendarioFinto.notifiche(CalendarioFinto.evento(di: f24Dicembre)) == ["popup-120"],
          "scadenza cambiata: evento spostato al 17/12, notifiche invariate")
-storeCal.elimina(spostato)
+storeCal.segnaPagato(spostato, il: Date())
 aspetta(calSync)
-verifica(CalendarioFinto.evento(di: f24Dicembre) == nil, "F24 eliminato: evento tolto")
+verifica((CalendarioFinto.evento(di: f24Dicembre)?["summary"] as? String)?.hasPrefix("PAGATO ✅") == true, "pagato anche il F24 di dicembre: «PAGATO ✅»")
+storeCal.elimina(storeCal.elementi.first { $0.id == f24Dicembre.id }!)
+aspetta(calSync)
+verifica(CalendarioFinto.evento(di: f24Dicembre) == nil && calSync.impostazioni.eventi[f24Dicembre.id.uuidString] == nil,
+         "eliminato dalla lista (anche se pagato): evento eliminato dal calendario")
 
 let idEventoB = calSync.impostazioni.eventi[rataB.id.uuidString]!.id
 CalendarioFinto.eventi[idEventoB] = nil

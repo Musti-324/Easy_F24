@@ -200,6 +200,25 @@ struct EventoSalvato: Codable, Equatable {
     /// Forma dell'evento quando è stato creato (le nuove impostazioni non cambiano gli eventi già creati).
     var tuttoIlGiorno: Bool
     var ora: Int
+    /// Le notifiche con cui è stato creato, da rimettere se l'F24 torna da pagare (nil = evento trovato già fatto).
+    var promemoria: PromemoriaSalvati?
+}
+
+/// Le notifiche di un evento, come le vuole Google.
+struct PromemoriaSalvati: Codable, Equatable {
+    var predefinite: Bool
+    var metodi: [String] = []
+    var minuti: [Int] = []
+
+    var json: [String: Any] {
+        if predefinite {
+            return ["useDefault": true]
+        }
+        return ["useDefault": false, "overrides": zip(metodi, minuti).map { ["method": $0.0, "minutes": $0.1] as [String: Any] }]
+    }
+
+    /// Nessuna notifica: per gli F24 già pagati.
+    static let nessuna = PromemoriaSalvati(predefinite: false)
 }
 
 struct ImpostazioniCalendario: Codable, Equatable {
@@ -234,8 +253,8 @@ struct ImpostazioniCalendario: Codable, Equatable {
 
 // MARK: - Sincronizzazione
 
-/// Tiene gli F24 da pagare in Google Calendar: un evento nel giorno della scadenza, tolto quando
-/// l'F24 è pagato o eliminato. Si confronta in memoria la lista con gli eventi già creati e si
+/// Tiene gli F24 da pagare in Google Calendar: un evento nel giorno della scadenza, che diventa
+/// "PAGATO ✅ …" quando l'F24 è pagato e viene tolto quando l'F24 è eliminato dalla lista. Si confronta in memoria la lista con gli eventi già creati e si
 /// chiama Google solo se c'è qualcosa da aggiungere, spostare o togliere.
 final class CalendarioSync: ObservableObject {
     /// Cosa fare per allineare il calendario alla lista.
@@ -340,10 +359,14 @@ final class CalendarioSync: ObservableObject {
         return formato.string(from: data)
     }
 
+    /// "F24 da pagare · 376,78 € · …" oppure, una volta pagato, "PAGATO ✅ · F24 · 376,78 € · …".
     static func titolo(_ f24: F24) -> String {
         let importo = f24.importoCentesimi.map { " · " + Formato.euro($0) } ?? ""
-        return String(("F24 da pagare" + importo + " · " + f24.descrizione).prefix(150))
+        let inizio = f24.isPagato ? CalendarioSync.prefissoPagato + " · F24" : "F24 da pagare"
+        return String((inizio + importo + " · " + f24.descrizione).prefix(150))
     }
+
+    static let prefissoPagato = "PAGATO ✅"
 
     /// Le operazioni necessarie, calcolate senza chiamare Google: vuoto = calendario già allineato.
     var operazioni: [Operazione] {
@@ -353,12 +376,13 @@ final class CalendarioSync: ObservableObject {
         }
         var operazioni: [Operazione] = []
         for (id, evento) in impostazioni.eventi.sorted(by: { $0.key < $1.key }) {
-            if let f24 = perId[id], !f24.isPagato {
+            if let f24 = perId[id] {
+                // Pagato: il titolo diventa "PAGATO ✅ …"; riportato da pagare, torna com'era.
                 if evento.giorno != CalendarioSync.giorno(f24.scadenza) || evento.titolo != CalendarioSync.titolo(f24) {
                     operazioni.append(.aggiorna(f24, evento))
                 }
             } else {
-                // Pagato o eliminato: l'evento va tolto.
+                // Eliminato dalla lista: l'evento va tolto.
                 operazioni.append(.elimina(f24Id: id, evento))
             }
         }
@@ -426,16 +450,30 @@ final class CalendarioSync: ObservableObject {
             var modifiche = CalendarioSync.date(f24, tuttoIlGiorno: evento.tuttoIlGiorno, ora: evento.ora)
             modifiche["summary"] = CalendarioSync.titolo(f24)
             modifiche["description"] = CalendarioSync.descrizione(f24)
+            let eraPagato = evento.titolo.hasPrefix(CalendarioSync.prefissoPagato)
+            if f24.isPagato && !eraPagato {
+                // Già pagato: niente più notifiche.
+                modifiche["reminders"] = PromemoriaSalvati.nessuna.json
+            } else if !f24.isPagato && eraPagato {
+                // Di nuovo da pagare: le notifiche con cui era stato creato (o quelle attuali).
+                modifiche["reminders"] = (evento.promemoria ?? promemoriaAttuali()).json
+            }
+            let tipo = f24.isPagato && !eraPagato ? "pagati" : "aggiornati"
             api.modifica(evento.id, con: modifiche, calendario: evento.calendarioId) { [weak self] risultato in
                 guard let self = self else { return }
                 switch risultato {
                 case .success:
-                    self.ricorda(f24, eventoId: evento.id, calendarioId: evento.calendarioId, tuttoIlGiorno: evento.tuttoIlGiorno, ora: evento.ora)
-                    fine(.success("aggiornati"))
+                    self.ricorda(f24, evento: evento)
+                    fine(.success(tipo))
                 case .failure(.nonTrovato):
-                    // Evento cancellato a mano in Google Calendar: lo si ricrea.
+                    // Evento cancellato a mano in Google Calendar: lo si ricrea (se l'F24 è ancora da pagare).
                     self.impostazioni.eventi[f24.id.uuidString] = nil
-                    self.crea(f24, con: api, fine: fine)
+                    self.salva()
+                    if f24.isPagato {
+                        fine(.success("tolti"))
+                    } else {
+                        self.crea(f24, con: api, fine: fine)
+                    }
                 case .failure(let errore):
                     fine(.failure(errore))
                 }
@@ -456,8 +494,10 @@ final class CalendarioSync: ObservableObject {
                 fine(.failure(errore))
             case .success(let nostri):
                 if let evento = nostri.first {
-                    self.ricorda(f24, eventoId: evento.id, calendarioId: calendario,
-                                 tuttoIlGiorno: self.impostazioni.tuttoIlGiorno, ora: self.impostazioni.oraEvento, titolo: evento.summary)
+                    self.ricorda(f24, evento: EventoSalvato(id: evento.id, calendarioId: calendario, giorno: "",
+                                                            titolo: evento.summary ?? "", tuttoIlGiorno: self.impostazioni.tuttoIlGiorno,
+                                                            ora: self.impostazioni.oraEvento, promemoria: nil),
+                                 titolo: evento.summary)
                     fine(.success("trovati"))
                     return
                 }
@@ -469,8 +509,9 @@ final class CalendarioSync: ObservableObject {
                     case .success(let delGiorno):
                         if let evento = delGiorno.first(where: { CalendarioSync.corrisponde($0, a: f24) }) {
                             // Messo a mano dall'utente: non lo si tocca, lo si ricorda solo (verrà tolto quando è pagato).
-                            self.ricorda(f24, eventoId: evento.id, calendarioId: calendario,
-                                         tuttoIlGiorno: self.impostazioni.tuttoIlGiorno, ora: self.impostazioni.oraEvento)
+                            self.ricorda(f24, evento: EventoSalvato(id: evento.id, calendarioId: calendario, giorno: "", titolo: "",
+                                                                    tuttoIlGiorno: self.impostazioni.tuttoIlGiorno,
+                                                                    ora: self.impostazioni.oraEvento, promemoria: nil))
                             fine(.success("trovati"))
                         } else {
                             self.crea(f24, con: api, fine: fine)
@@ -495,10 +536,12 @@ final class CalendarioSync: ObservableObject {
         let calendario = impostazioni.calendarioId
         let tuttoIlGiorno = impostazioni.tuttoIlGiorno
         let ora = impostazioni.oraEvento
+        let promemoria = promemoriaAttuali()
         api.crea(corpoEvento(f24), calendario: calendario) { [weak self] risultato in
             switch risultato {
             case .success(let evento):
-                self?.ricorda(f24, eventoId: evento.id, calendarioId: calendario, tuttoIlGiorno: tuttoIlGiorno, ora: ora)
+                self?.ricorda(f24, evento: EventoSalvato(id: evento.id, calendarioId: calendario, giorno: "", titolo: "",
+                                                         tuttoIlGiorno: tuttoIlGiorno, ora: ora, promemoria: promemoria))
                 fine(.success("aggiunti"))
             case .failure(let errore):
                 fine(.failure(errore))
@@ -506,11 +549,12 @@ final class CalendarioSync: ObservableObject {
         }
     }
 
-    private func ricorda(_ f24: F24, eventoId: String, calendarioId: String, tuttoIlGiorno: Bool, ora: Int, titolo: String? = nil) {
-        impostazioni.eventi[f24.id.uuidString] = EventoSalvato(id: eventoId, calendarioId: calendarioId,
-                                                               giorno: CalendarioSync.giorno(f24.scadenza),
-                                                               titolo: titolo ?? CalendarioSync.titolo(f24),
-                                                               tuttoIlGiorno: tuttoIlGiorno, ora: ora)
+    /// Ricorda l'evento di un F24 con il giorno e il titolo appena scritti (o `titolo`, se diverso).
+    private func ricorda(_ f24: F24, evento: EventoSalvato, titolo: String? = nil) {
+        var aggiornato = evento
+        aggiornato.giorno = CalendarioSync.giorno(f24.scadenza)
+        aggiornato.titolo = titolo ?? CalendarioSync.titolo(f24)
+        impostazioni.eventi[f24.id.uuidString] = aggiornato
         salva()
     }
 
@@ -523,22 +567,24 @@ final class CalendarioSync: ObservableObject {
         corpo["description"] = CalendarioSync.descrizione(f24)
         corpo["transparency"] = "transparent"
         corpo["extendedProperties"] = ["private": ["easyF24": f24.id.uuidString]]
-        if impostazioni.notifichePredefinite {
-            corpo["reminders"] = ["useDefault": true]
-        } else {
-            var viste: [String] = []
-            var notifiche: [[String: Any]] = []
-            for notifica in impostazioni.notifiche.prefix(ImpostazioniCalendario.massimoNotifiche) {
-                let minuti = notifica.minutiPrima(tuttoIlGiorno: impostazioni.tuttoIlGiorno)
-                let chiave = notifica.metodo.rawValue + "\(minuti)"
-                if !viste.contains(chiave) {
-                    viste.append(chiave)
-                    notifiche.append(["method": notifica.metodo.rawValue, "minutes": minuti])
-                }
-            }
-            corpo["reminders"] = ["useDefault": false, "overrides": notifiche]
-        }
+        corpo["reminders"] = promemoriaAttuali().json
         return corpo
+    }
+
+    /// Le notifiche delle impostazioni attuali (senza doppioni).
+    func promemoriaAttuali() -> PromemoriaSalvati {
+        if impostazioni.notifichePredefinite {
+            return PromemoriaSalvati(predefinite: true)
+        }
+        var promemoria = PromemoriaSalvati(predefinite: false)
+        for notifica in impostazioni.notifiche.prefix(ImpostazioniCalendario.massimoNotifiche) {
+            let minuti = notifica.minutiPrima(tuttoIlGiorno: impostazioni.tuttoIlGiorno)
+            if !zip(promemoria.metodi, promemoria.minuti).contains(where: { $0.0 == notifica.metodo.rawValue && $0.1 == minuti }) {
+                promemoria.metodi.append(notifica.metodo.rawValue)
+                promemoria.minuti.append(minuti)
+            }
+        }
+        return promemoria
     }
 
     /// Inizio e fine dell'evento: tutto il giorno della scadenza, oppure mezz'ora a un orario.
@@ -565,8 +611,11 @@ final class CalendarioSync: ObservableObject {
             righe.append("Importo: " + Formato.euro(importo))
         }
         righe.append("Scadenza: " + Formato.data(f24.scadenza))
+        if let pagatoIl = f24.pagatoIl {
+            righe.append("Pagato il " + Formato.data(pagatoIl))
+        }
         righe.append("")
-        righe.append("Aggiunto da Easy F24: quando lo segni come pagato nell'app, questo evento viene tolto.")
+        righe.append("Aggiunto da Easy F24: quando lo segni come pagato nell'app, il titolo diventa «PAGATO ✅».")
         return righe.joined(separator: "\n")
     }
 
@@ -579,7 +628,7 @@ final class CalendarioSync: ObservableObject {
             auth.dimenticaAccessToken()
             self.errore = errore.localizedDescription
         }
-        let parti = [("aggiunti", "aggiunti"), ("trovati", "già presenti"), ("aggiornati", "spostati"), ("tolti", "tolti")]
+        let parti = [("aggiunti", "aggiunti"), ("trovati", "già presenti"), ("pagati", "segnati PAGATO"), ("aggiornati", "aggiornati"), ("tolti", "tolti")]
             .compactMap { chiave, nome in conteggi[chiave].map { "\($0) \(nome)" } }
         esito = parti.isEmpty ? "calendario già aggiornato" : "eventi " + parti.joined(separator: ", ")
         if daRifare {
