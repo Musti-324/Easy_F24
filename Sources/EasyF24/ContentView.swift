@@ -46,6 +46,8 @@ struct ContentView: View {
         HStack(spacing: 0) {
             Colonna(titolo: "Da pagare",
                     colore: .orange,
+                    etichettaTotale: "Totale da pagare",
+                    totaleInEvidenza: true,
                     elementi: store.daPagare,
                     messaggioVuoto: "Nessun F24 da pagare.\nPremi «Nuovo F24» per aggiungerne uno.",
                     accessorio: {
@@ -71,6 +73,8 @@ struct ContentView: View {
 
             Colonna(titolo: "Pagati",
                     colore: .green,
+                    etichettaTotale: "Totale pagato",
+                    totaleInEvidenza: false,
                     elementi: store.pagati,
                     messaggioVuoto: "Ancora nessun F24 pagato.",
                     accessorio: { EmptyView() },
@@ -172,6 +176,10 @@ enum Avviso: Identifiable {
 struct Colonna<Accessorio: View, Riga: View>: View {
     let titolo: String
     let colore: Color
+    /// Es. "Totale da pagare": la somma degli importi, sempre visibile sotto il titolo.
+    let etichettaTotale: String
+    /// Totale scritto in grande e in nero (colonna "Da pagare").
+    let totaleInEvidenza: Bool
     let elementi: [F24]
     let messaggioVuoto: String
     let accessorio: () -> Accessorio
@@ -217,17 +225,30 @@ struct Colonna<Accessorio: View, Riga: View>: View {
                 Spacer()
                 accessorio()
             }
-            Text(totale)
-                .font(.subheadline)
-                .foregroundColor(.secondary)
+            rigaTotale
         }
         .padding(.horizontal, 16)
-        .frame(height: 72)
+        .frame(height: 76)
     }
 
-    private var totale: String {
+    /// "Totale da pagare: 1.732,30 €", sempre presente (anche a 0,00 €). Gli F24 senza importo
+    /// non entrano nella somma: lo si dice, così il totale non sembra più basso del vero.
+    private var rigaTotale: some View {
         let importi = elementi.compactMap { $0.importoCentesimi }
-        // Riga sempre presente (anche vuota) per allineare le due intestazioni.
-        return importi.isEmpty ? " " : "Totale " + Formato.euro(importi.reduce(0, +))
+        let senzaImporto = elementi.count - importi.count
+        return HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(etichettaTotale + ":")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+            Text(Formato.euro(importi.reduce(0, +)))
+                .font(totaleInEvidenza ? Font.title3.bold().monospacedDigit() : Font.subheadline.monospacedDigit())
+                .foregroundColor(totaleInEvidenza ? .primary : .secondary)
+            if senzaImporto > 0 {
+                Text(senzaImporto == 1 ? "· 1 F24 senza importo" : "· \(senzaImporto) F24 senza importo")
+                    .font(.caption)
+                    .foregroundColor(.orange)
+                    .help("Questi F24 non hanno un importo e non sono compresi nel totale: aprili con un doppio clic per inserirlo.")
+            }
+        }
     }
 }
