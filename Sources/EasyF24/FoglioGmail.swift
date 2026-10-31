@@ -8,6 +8,7 @@ struct FoglioGmail: View {
     let onChiudi: () -> Void
 
     @State private var emailCommercialista: String
+    @State private var parolaChiave: String
     @State private var tuttoIlDominio: Bool
     @State private var clientId: String
     @State private var clientSecret: String
@@ -18,6 +19,7 @@ struct FoglioGmail: View {
         self.gmail = gmail
         self.onChiudi = onChiudi
         _emailCommercialista = State(initialValue: gmail.impostazioni.emailCommercialista)
+        _parolaChiave = State(initialValue: gmail.impostazioni.parolaChiave)
         _tuttoIlDominio = State(initialValue: gmail.impostazioni.tuttoIlDominio)
         _clientId = State(initialValue: gmail.auth.credenziali?.clientId ?? "")
         _clientSecret = State(initialValue: gmail.auth.credenziali?.clientSecret ?? "")
@@ -35,13 +37,14 @@ struct FoglioGmail: View {
             Text("Collegamento a Gmail")
                 .font(.title2)
                 .bold()
-            Text("Easy F24 cerca nella tua casella le email del commercialista con «\(GmailSync.oggettoRichiesto)» nell'oggetto e aggiunge i nuovi moduli tra quelli da pagare. L'accesso a Gmail è in sola lettura.")
+            Text("Easy F24 cerca nella tua casella le email del commercialista che hanno nell'oggetto la parola chiave scelta da te, e aggiunge i nuovi moduli tra quelli da pagare. L'accesso a Gmail è in sola lettura.")
                 .foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             Divider()
             Text("1. Email del commercialista").font(.headline)
             sezioneCommercialista
+            sezioneParolaChiave
 
             Divider()
             Text("2. Credenziali dell'app Google").font(.headline)
@@ -65,6 +68,20 @@ struct FoglioGmail: View {
         }
         .padding(20)
         .frame(width: 500)
+    }
+
+    private var sezioneParolaChiave: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Etichetta("Parola chiave nell'oggetto dell'email")
+            TextField("es. MOD. F24", text: $parolaChiave)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+            Text(GmailSync.pulisci(parolaChiave: parolaChiave).isEmpty
+                 ? "Scrivi il testo che il commercialista mette sempre nell'oggetto delle email con gli F24."
+                 : "Vengono importate solo le email con «\(GmailSync.pulisci(parolaChiave: parolaChiave))» nell'oggetto (maiuscole e minuscole non contano).")
+                .font(.caption)
+                .foregroundColor(GmailSync.pulisci(parolaChiave: parolaChiave).isEmpty ? .orange : .secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private var sezioneCommercialista: some View {
@@ -152,7 +169,7 @@ struct FoglioGmail: View {
                     salvaCommercialista()
                     gmail.controlla()
                 }
-                .disabled(gmail.inControllo || !emailValida)
+                .disabled(gmail.inControllo || !emailValida || GmailSync.pulisci(parolaChiave: parolaChiave).isEmpty)
                 Button("Scollega", action: gmail.scollega)
             }
         case .attesaBrowser:
@@ -218,6 +235,7 @@ struct FoglioGmail: View {
     }
 
     private func salvaCommercialista() {
+        gmail.impostaParolaChiave(parolaChiave)
         if emailValida {
             gmail.impostaEmailCommercialista(emailCommercialista)
             gmail.impostaTuttoIlDominio(tuttoIlDominio)
@@ -258,7 +276,7 @@ struct BarraGmail: View {
             if gmail.inControllo {
                 ProgressView()
                     .controlSize(.small)
-            } else if gmail.stato == .collegato && gmail.emailCommercialistaValida {
+            } else if gmail.stato == .collegato && gmail.configurazioneCompleta {
                 Button("Controlla ora", action: gmail.controlla)
             }
             Button(gmail.stato == .collegato ? "Gmail…" : "Collega Gmail…", action: onImpostazioni)
@@ -281,7 +299,7 @@ struct BarraGmail: View {
             if gmail.inControllo {
                 return "Controllo delle email di \(gmail.mittenteCercato)…"
             }
-            var parti = ["Gmail: email da \(gmail.mittenteCercato)"]
+            var parti = ["Gmail: email da \(gmail.mittenteCercato) con «\(gmail.impostazioni.parolaChiave)»"]
             if let quando = gmail.ultimoControllo {
                 let giorno = Calendar.current.isDateInToday(quando) ? "" : "il \(Formato.data(quando)) "
                 parti.append("controllate \(giorno)alle \(Formato.ora(quando))")

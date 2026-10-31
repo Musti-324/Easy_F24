@@ -34,8 +34,9 @@ Un gestionale semplicissimo per Mac per tenere traccia degli **F24**:
 
 Easy F24 può leggere la tua casella Gmail e aggiungere da solo gli F24 che ti manda il commercialista.
 
-- Cerca **solo** le email del commercialista con almeno **«MOD. F24»** nell'oggetto
-  (ricerca Gmail: `from:<commercialista> subject:"MOD. F24"`). Se lo studio ha un dominio proprio
+- Cerca **solo** le email del commercialista che hanno nell'oggetto la **parola chiave scelta da te**
+  (per esempio «MOD. F24»; ricerca Gmail: `from:<commercialista> subject:"<parola chiave>"`).
+  Maiuscole, minuscole, accenti e spazi non contano. Se lo studio ha un dominio proprio
   (es. `studio@studio-esempio.it`), di default accetta **qualsiasi indirizzo di quel dominio**, così arrivano anche
   gli F24 mandati dai colleghi; l'opzione si può spegnere. Per i provider pubblici (gmail.com, libero.it, PEC…)
   vale sempre e solo l'indirizzo esatto, perché lì chiunque può avere una casella.
@@ -63,7 +64,8 @@ Google chiede che ogni app che legge Gmail abbia delle proprie credenziali. Sono
 4. In **Credenziali → Crea credenziali → ID client OAuth** (o **Client → Crea client**) scegli
    **App desktop** e scarica il file JSON.
 5. In Easy F24 premi **Collega Gmail…**:
-   1. scrivi l'**email del commercialista** (se lo studio ha un dominio proprio, puoi accettare tutti i suoi indirizzi);
+   1. scrivi l'**email del commercialista** (se lo studio ha un dominio proprio, puoi accettare tutti i suoi indirizzi)
+      e la **parola chiave** che il commercialista mette sempre nell'oggetto delle email con gli F24;
    2. premi **Importa file JSON…** e scegli il file appena scaricato (oppure incolla Client ID e client secret);
    3. premi **Accedi con Google…**: si apre il browser, scegli il tuo account e consenti l'accesso.
 
@@ -81,7 +83,7 @@ Google chiede che ogni app che legge Gmail abbia delle proprie credenziali. Sono
 
 - **Email false.** Il mittente di un'email si può falsificare. Easy F24 importa un'email solo se:
   l'indirizzo vero (non il nome visualizzato) è quello del commercialista o del dominio del suo studio, l'oggetto contiene
-  «MOD. F24» e Gmail ha verificato che viene davvero dal suo dominio (SPF, DKIM o DMARC).
+  la tua parola chiave e Gmail ha verificato che viene davvero dal suo dominio (SPF, DKIM o DMARC).
   Le email che non superano la verifica non vengono importate e sono segnalate in basso con uno scudo arancione.
 - **Accesso a Google.** Si fa nel browser (OAuth con PKCE e controllo dello «state»): l'app non vede mai la password.
   Il permesso è di sola lettura e il token sta nel Portachiavi. **Scollega** revoca il permesso; si può revocare
@@ -155,6 +157,15 @@ Su un Mac Intel si può compilare solo la versione Intel con `ARCHS=x86_64 ./scr
 
 Per modificare il codice con Xcode basta aprire `Package.swift`.
 L'icona si rigenera con `swift scripts/make-icon.swift`.
+
+## Prove automatiche
+
+```bash
+./scripts/test.sh
+```
+
+Esegue le prove in `Tests/Prove.swift` con un Gmail simulato (nessun accesso alla posta vera):
+lettura di importi e scadenze, ricerca e ultimo modulo, email false, accesso a Google, permessi dei file e calendario.
 
 ## Struttura
 
