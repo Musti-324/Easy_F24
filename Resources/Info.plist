@@ -33,7 +33,7 @@
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>
-	<string>© 2026 Diego Mustea</string>
+	<string>© 2026 Diego Mustea · Licenza Apache 2.0</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>

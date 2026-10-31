@@ -43,6 +43,8 @@ lipo -create "${binaries[@]}" -output "$APP/Contents/MacOS/$EXECUTABLE"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 cp Resources/container-migration.plist "$APP/Contents/Resources/container-migration.plist"
+# La licenza Apache 2.0 chiede di distribuire licenza e NOTICE insieme all'app.
+cp LICENSE NOTICE "$APP/Contents/Resources/"
 # Firma ad-hoc con sandbox (Resources/EasyF24.entitlements) e runtime protetto,
 # che impedisce di iniettare codice nell'app.
 codesign --force --sign - --options runtime --entitlements Resources/EasyF24.entitlements "$APP"

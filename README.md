@@ -194,3 +194,16 @@ Resources/
   EasyF24.entitlements        permessi della sandbox
   container-migration.plist   spostamento dei dati delle versioni precedenti nella sandbox
 ```
+
+## Licenza
+
+Easy F24 è distribuito con licenza **[Apache 2.0](LICENSE)** · Copyright 2026 Diego Mustea.
+
+Puoi usare, modificare e ridistribuire il codice, anche per altri progetti, a queste condizioni:
+
+- **le modifiche vanno segnalate**: chiunque, anche esterno al progetto, distribuisca una versione modificata
+  deve indicare nei file cambiati che li ha modificati;
+- vanno mantenuti l'attribuzione e il file [`NOTICE`](NOTICE), e inclusa una copia della licenza;
+- il software è fornito «così com'è», senza garanzie.
+
+Come segnalare le modifiche e proporre contributi: [`CONTRIBUTING.md`](CONTRIBUTING.md).
