@@ -28,7 +28,7 @@ Un gestionale semplicissimo per Mac per tenere traccia degli **F24**:
 | Modificare un F24 | Doppio clic sulla scheda, oppure tasto destro → **Modifica…** |
 | Annullare un pagamento | Tasto destro su un F24 pagato → **Riporta tra i da pagare** |
 | Eliminare un F24 | Tasto destro → **Elimina…** |
-| Prendere gli F24 dalle email del commercialista | Pulsante **Collega Gmail…** in basso (vedi sotto) |
+| Prendere gli F24 dalle email del commercialista | Pulsante giallo **Collega a Gmail** in basso (vedi sotto) |
 
 ## F24 automatici da Gmail
 
@@ -63,7 +63,8 @@ Google chiede che ogni app che legge Gmail abbia delle proprie credenziali. Sono
    il tuo indirizzo Gmail.
 4. In **Credenziali → Crea credenziali → ID client OAuth** (o **Client → Crea client**) scegli
    **App desktop** e scarica il file JSON.
-5. In Easy F24 premi **Collega Gmail…**:
+5. In Easy F24 premi il pulsante giallo **Collega a Gmail** in basso a destra
+   (una volta collegato diventa **Gmail…**, per cambiare le impostazioni):
    1. scrivi l'**email del commercialista** (se lo studio ha un dominio proprio, puoi accettare tutti i suoi indirizzi)
       e la **parola chiave** che il commercialista mette sempre nell'oggetto delle email con gli F24;
    2. premi **Importa file JSON…** e scegli il file appena scaricato (oppure incolla Client ID e client secret);

@@ -36,7 +36,7 @@ enum ErroreGmail: LocalizedError {
         case .accessoNegato(let dettaglio):
             return "Accesso a Google non riuscito (\(dettaglio))."
         case .accessoScaduto:
-            return "L'accesso a Gmail è scaduto: ricollegati da «Gmail…»."
+            return "L'accesso a Gmail è scaduto: ricollegati con «Collega a Gmail»."
         case .rete(let dettaglio):
             return "Gmail non raggiungibile: \(dettaglio)"
         case .risposta(let dettaglio):

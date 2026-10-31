@@ -279,7 +279,13 @@ struct BarraGmail: View {
             } else if gmail.stato == .collegato && gmail.configurazioneCompleta {
                 Button("Controlla ora", action: gmail.controlla)
             }
-            Button(gmail.stato == .collegato ? "Gmail…" : "Collega Gmail…", action: onImpostazioni)
+            if gmail.stato == .collegato {
+                Button("Gmail…", action: onImpostazioni)
+            } else {
+                Button("Collega a Gmail", action: onImpostazioni)
+                    .buttonStyle(PulsanteGiallo())
+                    .help("Collega Gmail per aggiungere da soli gli F24 del commercialista")
+            }
         }
         .font(.callout)
         .padding(.horizontal, 16)
@@ -309,5 +315,24 @@ struct BarraGmail: View {
             }
             return parti.joined(separator: " · ")
         }
+    }
+}
+
+/// Pulsante giallo, per far notare che Gmail non è ancora collegato.
+struct PulsanteGiallo: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundColor(Color.black.opacity(0.85))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color(NSColor.systemYellow).opacity(configuration.isPressed ? 0.75 : 1))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .stroke(Color.black.opacity(0.12), lineWidth: 1)
+            )
+            .contentShape(Rectangle())
     }
 }
