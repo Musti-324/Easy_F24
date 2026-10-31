@@ -66,6 +66,8 @@ final class GmailSync: ObservableObject {
     @Published private(set) var stato: Stato
     @Published private(set) var impostazioni: Impostazioni
     @Published private(set) var inControllo = false
+    /// Si sta rileggendo il PDF di un F24 già importato.
+    @Published private(set) var rileggendo = false
     @Published private(set) var ultimoControllo: Date?
     /// Esito dell'ultimo controllo, es. "Aggiunto 1 nuovo F24".
     @Published private(set) var esito: String?
@@ -311,6 +313,15 @@ final class GmailSync: ObservableObject {
 
     private static func leggiF24(da messaggio: MessaggioGmail, con api: GmailAPI,
                                  fine: @escaping (Result<[F24], ErroreGmail>) -> Void) {
+        leggi(messaggio, con: api) { risultato in
+            fine(risultato.map { letti in letti.map { $0.f24 } })
+        }
+    }
+
+    /// Scarica i PDF del messaggio (solo in memoria) e ne legge importo e scadenza. La lettura,
+    /// che con l'OCR può durare qualche secondo, avviene in sottofondo: la finestra non si blocca.
+    private static func leggi(_ messaggio: MessaggioGmail, con api: GmailAPI,
+                              fine: @escaping (Result<[LettoreF24.Letto], ErroreGmail>) -> Void) {
         inSequenza(messaggio.allegatiPDF, passo: { (allegato: MessaggioGmail.PDF, fatto: @escaping (Result<LettoreF24.PDF, ErroreGmail>) -> Void) in
             if let dati = allegato.dati {
                 fatto(.success(LettoreF24.PDF(nome: allegato.nome, dati: dati)))
@@ -329,11 +340,81 @@ final class GmailSync: ObservableObject {
                 fatto(.failure(.risposta("allegato senza contenuto")))
             }
         }) { risultato in
-            fine(risultato.map { pdf in
-                LettoreF24.moduli(messaggioId: messaggio.id, oggetto: messaggio.oggetto, corpo: messaggio.testo,
-                                  ricevutoIl: messaggio.ricevutoIl, pdf: pdf)
-            })
+            switch risultato {
+            case .failure(let errore):
+                fine(.failure(errore))
+            case .success(let pdf):
+                let oggetto = messaggio.oggetto
+                let corpo = messaggio.testo
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let letti = LettoreF24.letti(messaggioId: messaggio.id, oggetto: oggetto, corpo: corpo,
+                                                 ricevutoIl: messaggio.ricevutoIl, pdf: pdf)
+                    DispatchQueue.main.async { fine(.success(letti)) }
+                }
+            }
         }
+    }
+
+    /// Rilegge dal PDF su Gmail importo e scadenza di un F24 già importato e li aggiorna.
+    /// Un importo già inserito a mano non viene cancellato se nel PDF non si trova.
+    func rileggi(_ f24: F24) {
+        guard let id = f24.gmailMessageId, !inControllo else { return }
+        guard stato == .collegato else {
+            errore = ErroreGmail.accessoScaduto.localizedDescription
+            return
+        }
+        inControllo = true
+        rileggendo = true
+        errore = nil
+        auth.accessToken { [weak self] risultato in
+            guard let self = self else { return }
+            switch risultato {
+            case .failure(let errore):
+                self.termina(errore: errore)
+            case .success(let token):
+                let api = GmailAPI(token: token)
+                api.messaggio(id) { [weak self] risultato in
+                    switch risultato {
+                    case .failure(let errore):
+                        self?.termina(errore: errore)
+                    case .success(let messaggio):
+                        GmailSync.leggi(messaggio, con: api) { [weak self] risultato in
+                            switch risultato {
+                            case .failure(let errore):
+                                self?.termina(errore: errore)
+                            case .success(let letti):
+                                self?.aggiorna(f24, con: letti)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func aggiorna(_ f24: F24, con letti: [LettoreF24.Letto]) {
+        // Con più moduli nella stessa email si riconosce quello giusto dalla descrizione ("… – nome file").
+        let letto = letti.count == 1 ? letti.first : letti.first { $0.f24.descrizione == f24.descrizione }
+        guard let modulo = letto, let attuale = store.elementi.first(where: { $0.id == f24.id }) else {
+            termina(errore: .risposta("non trovo il modulo di questo F24 nell'email"))
+            return
+        }
+        var aggiornato = attuale
+        if let importo = modulo.importo {
+            aggiornato.importoCentesimi = importo.centesimi
+        }
+        if let scadenza = modulo.scadenza {
+            aggiornato.scadenza = scadenza.data
+        }
+        aggiornato.daVerificare = aggiornato.importoCentesimi == nil || modulo.importo?.sicuro == false
+            || modulo.scadenza?.sicura != true
+        store.aggiorna(aggiornato)
+        rileggendo = false
+        inControllo = false
+        var parti: [String] = []
+        parti.append(modulo.importo.map { "importo " + Formato.euro($0.centesimi) } ?? "importo non trovato nel PDF")
+        parti.append(modulo.scadenza.map { "scadenza " + Formato.data($0.data) } ?? "scadenza non trovata")
+        esito = "PDF riletto: " + parti.joined(separator: ", ")
     }
 
     /// Indirizzo vero del mittente (non basta che compaia nel nome) uguale a quello del commercialista,
@@ -399,6 +480,7 @@ final class GmailSync: ObservableObject {
     }
 
     private func termina(errore: ErroreGmail) {
+        rileggendo = false
         inControllo = false
         auth.dimenticaAccessToken()
         if case .accessoScaduto = errore {

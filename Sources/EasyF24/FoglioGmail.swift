@@ -365,6 +365,9 @@ struct BarraGmail: View {
         case .attesaBrowser:
             return "Accesso a Gmail in corso nel browser…"
         case .collegato:
+            if gmail.rileggendo {
+                return "Rileggo il PDF da Gmail…"
+            }
             if gmail.inControllo {
                 return "Controllo delle email di \(gmail.mittenteCercato)…"
             }

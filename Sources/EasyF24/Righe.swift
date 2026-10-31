@@ -8,6 +8,7 @@ struct RigaDaPagare: View {
     let onModifica: () -> Void
     let onElimina: () -> Void
     var onApriEmail: (() -> Void)?
+    var onRileggi: (() -> Void)?
 
     var body: some View {
         let stato = StatoScadenza(scadenza: f24.scadenza, oggi: oggi)
@@ -50,6 +51,9 @@ struct RigaDaPagare: View {
             if let apri = onApriEmail {
                 Button("Apri l'email in Gmail", action: apri)
             }
+            if let rileggi = onRileggi {
+                Button("Rileggi importo e scadenza dal PDF", action: rileggi)
+            }
             Divider()
             Button("Elimina…", action: onElimina)
         }
@@ -63,6 +67,7 @@ struct RigaPagata: View {
     let onRiporta: () -> Void
     let onElimina: () -> Void
     var onApriEmail: (() -> Void)?
+    var onRileggi: (() -> Void)?
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
@@ -91,6 +96,9 @@ struct RigaPagata: View {
             Button("Modifica…", action: onModifica)
             if let apri = onApriEmail {
                 Button("Apri l'email in Gmail", action: apri)
+            }
+            if let rileggi = onRileggi {
+                Button("Rileggi importo e scadenza dal PDF", action: rileggi)
             }
             Button("Riporta tra i da pagare", action: onRiporta)
             Divider()

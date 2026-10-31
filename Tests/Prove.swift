@@ -2,6 +2,7 @@
 // Si eseguono con ./scripts/test.sh: nessuna connessione a Gmail vera.
 import AppKit
 import Foundation
+import PDFKit
 
 var falliti = 0
 var superati = 0
@@ -341,6 +342,96 @@ let dicembre = CalendarioMese.giorni(del: giorno(16, 12, 2026))
 verifica(dicembre.count == 42 && cal.isDate(dicembre[0], inSameDayAs: giorno(30, 11, 2026)), "dicembre 2026: 42 caselle da lunedì 30/11")
 verifica(CalendarioMese.giorni(del: giorno(10, 3, 2026)).allSatisfy { cal.component(.hour, from: $0) == 0 }, "cambio dell'ora legale: caselle a mezzanotte")
 verifica(CalendarioMese.nomiGiorni == ["LUN", "MAR", "MER", "GIO", "VEN", "SAB", "DOM"], "settimana da lunedì, nomi in italiano")
+
+print("— Importo e scadenza dal PDF in formati diversi")
+func leggiUno(_ righe: [String], oggetto: String = "MOD. F24", corpo: String = "") -> LettoreF24.Letto {
+    LettoreF24.letti(messaggioId: "f", oggetto: oggetto, corpo: corpo, ricevutoIl: giorno(28, 10, 2026),
+                     pdf: [.init(nome: "F24.pdf", dati: pdf(righe))])[0]
+}
+let centesimiSeparati = leggiUno(["MODELLO F24", "SALDO FINALE   EURO +   264 00", "ESTREMI DEL VERSAMENTO"])
+verifica(centesimiSeparati.importo?.centesimi == 26400 && centesimiSeparati.importo?.sicuro == true, "«264 00» con i centesimi in una casella a parte → 264,00 €")
+verifica(leggiUno(["MODELLO F24", "SALDO FINALE 264.00"]).importo?.centesimi == 26400, "«264.00» con il punto → 264,00 €")
+verifica(leggiUno(["F24", "TOTALE DA VERSARE € 1.234,56"]).importo?.centesimi == 123456, "etichetta «totale da versare»")
+let valorePrima = leggiUno(["F24", "EURO + 99,00", "SALDO FINALE"])
+verifica(valorePrima.importo?.centesimi == 9900 && valorePrima.importo?.sicuro == false, "valore scritto prima dell'etichetta: trovato, da verificare")
+let conScadenza = leggiUno(["F24", "Scadenza: 16 11 2026", "SALDO FINALE 264,00"])
+verifica(conScadenza.scadenza?.data == giorno(16, 11, 2026) && conScadenza.scadenza?.sicura == true && !conScadenza.f24.daVerificare,
+         "scadenza scritta nel PDF a caselle («16 11 2026»): presa, F24 senza avvisi")
+let nascita = leggiUno(["F24", "data di nascita 03 04 1970", "nato il 03/04/1970", "SALDO FINALE 264,00"], corpo: "scadenza 16/11/2026")
+verifica(nascita.scadenza?.data == giorno(16, 11, 2026), "la data di nascita nel PDF non diventa la scadenza")
+let dataVersamento = leggiUno(["F24", "SALDO FINALE 264,00", "ESTREMI DEL VERSAMENTO DATA 16112026"])
+verifica(dataVersamento.scadenza?.data == giorno(16, 11, 2026) && dataVersamento.scadenza?.sicura == false,
+         "«DATA 16112026» degli estremi del versamento: presa, da verificare")
+let rate = LettoreF24.letti(messaggioId: "r", oggetto: "N. 2 MOD. F24 PER IL VERSAMENTO RATE MINIMALE INPS 2026",
+                            corpo: "In allegato i modelli, scadenza 16/11/2026.", ricevutoIl: giorno(28, 10, 2026),
+                            pdf: [.init(nome: "F24NoCalc.pdf", dati: pdf(["F24", "Scadenza: 16/11/2026", "SALDO FINALE 264,00"])),
+                                  .init(nome: "F24NoCalc (1).pdf", dati: pdf(["F24", "Scadenza: 16/12/2026", "SALDO FINALE 264,00"]))])
+verifica(rate.map { $0.f24.scadenza } == [giorno(16, 11, 2026), giorno(16, 12, 2026)] && rate.allSatisfy { $0.f24.importoCentesimi == 26400 },
+         "due rate: ognuna con la sua scadenza presa dal PDF (non quella unica dell'email)")
+
+// Modulo compilabile: importo e scadenza stanno nei campi, non nel testo della pagina.
+let compilabile: Data = {
+    let documento = PDFDocument(data: pdf(["MODELLO DI PAGAMENTO UNIFICATO F24", "SALDO FINALE   EURO +"]))!
+    for (nome, valore, y) in [("SaldoFinale", "264,00", 200.0), ("data_scadenza", "16/11/2026", 160.0)] as [(String, String, CGFloat)] {
+        let campo = PDFAnnotation(bounds: CGRect(x: 400, y: y, width: 120, height: 16), forType: .widget, withProperties: nil)
+        campo.widgetFieldType = .text
+        campo.fieldName = nome
+        campo.widgetStringValue = valore
+        documento.page(at: 0)!.addAnnotation(campo)
+    }
+    return documento.dataRepresentation()!
+}()
+let daCampi = LettoreF24.letti(messaggioId: "c", oggetto: "MOD. F24", corpo: "", ricevutoIl: giorno(28, 10, 2026),
+                               pdf: [.init(nome: "F24NoCalc.pdf", dati: compilabile)])[0]
+verifica(daCampi.f24.importoCentesimi == 26400 && daCampi.f24.scadenza == giorno(16, 11, 2026) && !daCampi.f24.daVerificare,
+         "modulo compilabile: importo e scadenza letti dai campi")
+
+// PDF scansionato: nessun testo, solo l'immagine della pagina → OCR.
+let scansione: Data = {
+    let larghezza = 1240, altezza = 1754
+    let immagine = NSImage(size: NSSize(width: larghezza, height: altezza))
+    immagine.lockFocus()
+    NSColor.white.setFill()
+    NSRect(x: 0, y: 0, width: larghezza, height: altezza).fill()
+    let stile: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 30), .foregroundColor: NSColor.black]
+    for (testo, y) in [("MODELLO DI PAGAMENTO UNIFICATO F24", 1650), ("SEZIONE INPS   CF   2026   264,00", 1100),
+                       ("Scadenza: 16/11/2026", 700), ("SALDO FINALE      EURO +      264,00", 420)] as [(String, Int)] {
+        (testo as NSString).draw(at: NSPoint(x: 80, y: y), withAttributes: stile)
+    }
+    immagine.unlockFocus()
+    var rettangolo = CGRect(x: 0, y: 0, width: larghezza, height: altezza)
+    let cg = immagine.cgImage(forProposedRect: &rettangolo, context: nil, hints: nil)!
+    let dati = NSMutableData()
+    var box = CGRect(x: 0, y: 0, width: 595, height: 842)
+    let ctx = CGContext(consumer: CGDataConsumer(data: dati as CFMutableData)!, mediaBox: &box, nil)!
+    ctx.beginPDFPage(nil)
+    ctx.draw(cg, in: box)
+    ctx.endPDFPage()
+    ctx.closePDF()
+    return dati as Data
+}()
+verifica((PDFDocument(data: scansione)?.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, "il PDF di prova scansionato non ha testo")
+var inizioOCR = Date()
+let daScansione = LettoreF24.letti(messaggioId: "s", oggetto: "MOD. F24", corpo: "", ricevutoIl: giorno(28, 10, 2026),
+                                   pdf: [.init(nome: "scansione.pdf", dati: scansione)])[0]
+print(String(format: "     (OCR della pagina: %.1f s)", Date().timeIntervalSince(inizioOCR)))
+verifica(daScansione.f24.importoCentesimi == 26400 && daScansione.f24.scadenza == giorno(16, 11, 2026),
+         "PDF scansionato: importo e scadenza letti con l'OCR")
+
+print("— Rileggere dal PDF un F24 già importato")
+GmailFinto.refreshScaduto = false
+let storeRilettura = F24Store(fileURL: URL(fileURLWithPath: "\(cartella)/rilettura/f24.json"))
+let senzaImporto = F24(descrizione: "MOD. F24 saldo IMU - scadenza 16/12/2026", scadenza: giorno(28, 10, 2026),
+                       gmailMessageId: "imu", daVerificare: true)
+storeRilettura.aggiungi(senzaImporto)
+let gmailRilettura = GmailSync(store: storeRilettura,
+                               auth: GoogleAuth(servizioPortachiavi: nil, credenziali: CredenzialiGoogle(clientId: "id", clientSecret: "s", refreshToken: "r")))
+gmailRilettura.rileggi(senzaImporto)
+attendi { gmailRilettura.inControllo }
+let riletto = storeRilettura.elementi[0]
+verifica(riletto.importoCentesimi == 125000 && riletto.scadenza == giorno(16, 12, 2026) && !riletto.daVerificare && riletto.id == senzaImporto.id,
+         "«Rileggi»: importo e scadenza aggiornati dal PDF su Gmail (\(gmailRilettura.esito ?? gmailRilettura.errore ?? ""))")
+verifica(storeRilettura.elementi.count == 1 && riletto.descrizione == senzaImporto.descrizione, "nessun F24 doppio, descrizione invariata")
 
 print(falliti == 0 ? "\nTUTTO OK (\(superati) controlli)" : "\n\(falliti) VERIFICHE FALLITE su \(superati + falliti)")
 exit(falliti == 0 ? 0 : 1)
