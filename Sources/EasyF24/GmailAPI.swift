@@ -20,12 +20,13 @@ struct GmailAPI {
         }
     }
 
-    func messaggio(_ id: String, fine: @escaping (Result<MessaggioGmail, ErroreGmail>) -> Void) {
+    /// Un messaggio. Con `soloData` arrivano solo id e ora di arrivo (molto più leggero).
+    func messaggio(_ id: String, soloData: Bool = false, fine: @escaping (Result<MessaggioGmail, ErroreGmail>) -> Void) {
         guard GmailAPI.idValido(id) else {
             fine(.failure(.risposta("identificativo di messaggio non valido")))
             return
         }
-        richiesta("/messages/\(id)", parametri: [URLQueryItem(name: "format", value: "full")], fine: fine)
+        richiesta("/messages/\(id)", parametri: [URLQueryItem(name: "format", value: soloData ? "minimal" : "full")], fine: fine)
     }
 
     func allegato(messaggio: String, allegato: String, fine: @escaping (Result<Data, ErroreGmail>) -> Void) {

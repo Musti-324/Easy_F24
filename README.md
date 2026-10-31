@@ -53,10 +53,11 @@ Easy F24 può leggere la tua casella Gmail e aggiungere da solo gli F24 che ti m
 - Se non trova importo o scadenza con sicurezza, l'F24 compare con la scritta **«controlla importo e scadenza»**:
   basta aprirlo con un doppio clic e correggere. Con il tasto destro → **Apri l'email in Gmail** vedi l'email originale.
 - Controlla all'apertura dell'app, poi ogni 30 minuti e quando premi **Controlla ora**.
-- **F24 eliminati per sbaglio:** l'app ricorda quanti F24 ha importato da ogni email. A ogni controllo
-  confronta questo numero con la lista (senza chiedere nulla a Gmail) e, se ne manca qualcuno, riscarica
-  solo quelle email e lo riaggiunge: tra quelli **da pagare** se la scadenza non è ancora passata,
-  altrimenti tra i **pagati** (con la scadenza come data del pagamento).
+- **F24 eliminati per sbaglio:** a ogni controllo l'app confronta le email del commercialista trovate su
+  Gmail (dalla prima importata in poi) con la lista e riaggiunge gli F24 che mancano: tra quelli
+  **da pagare** se la scadenza non è ancora passata, altrimenti tra i **pagati** (con la scadenza come
+  data del pagamento). Per restare leggera fa una sola ricerca che restituisce solo gli identificativi;
+  ogni email viene scaricata una volta per sapere quanti F24 contiene e poi solo se ne manca qualcuno.
 - L'accesso a Gmail è **in sola lettura**. La password di Google non passa mai dall'app: l'accesso si fa nel browser
   e l'app conserva solo un token nel **Portachiavi** di macOS.
 

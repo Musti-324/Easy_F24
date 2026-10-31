@@ -443,66 +443,76 @@ verifica(storeRilettura.elementi.count == 1 && riletto.descrizione == senzaImpor
 
 print("— F24 eliminati per sbaglio")
 GmailFinto.refreshScaduto = false
-let cartellaEliminati = URL(fileURLWithPath: "\(cartella)/eliminati")
-try? FileManager.default.createDirectory(at: cartellaEliminati, withIntermediateDirectories: true)
-let msEnorme = Int64(giorno(31, 10, 2026).timeIntervalSince1970 * 1000) + 123
-// Prima erano stati importati 1 F24 da «vecchio», 1 da «imu» e 2 da «doppio» (INPS e IVA); l'email «sparito»
-// non c'è più su Gmail. Poi l'utente ha eliminato tutto tranne il modulo INPS.
-try! Data("""
-{"emailCommercialista":"studio@bianchi.it","paroleChiave":["MOD. F24"],"tuttoIlDominio":true,
- "importati":{"vecchio":1,"imu":1,"doppio":2,"sparito":1},
- "ultimoModulo":{"messaggioId":"enorme","ricevutoIlMs":\(msEnorme),"oggetto":"MOD. F24 dicembre"}}
-""".utf8).write(to: cartellaEliminati.appendingPathComponent("gmail.json"))
-let storeEliminati = F24Store(fileURL: cartellaEliminati.appendingPathComponent("f24.json"))
-storeEliminati.aggiungi(F24(descrizione: "MOD. F24 novembre – INPS", importoCentesimi: 48230, scadenza: giorno(16, 11, 2026),
-                            gmailMessageId: "doppio", gmailAllegato: "INPS.pdf"))
-let gmailEliminati = GmailSync(store: storeEliminati,
-                               auth: GoogleAuth(servizioPortachiavi: nil, credenziali: CredenzialiGoogle(clientId: "id", clientSecret: "s", refreshToken: "r")))
-verifica(gmailEliminati.emailConF24Mancanti == ["doppio", "imu", "sparito", "vecchio"], "si accorge, senza chiedere a Gmail, delle email con F24 mancanti")
-GmailFinto.richieste = []
-gmailEliminati.controlla(); attendi { gmailEliminati.inControllo }
-let daPagareDopo = storeEliminati.daPagare
-let pagatiDopo = storeEliminati.pagati
-verifica(gmailEliminati.esito?.contains("riaggiunti 3 F24 eliminati") == true, "esito: \(gmailEliminati.esito ?? gmailEliminati.errore ?? "")")
-verifica(pagatiDopo.count == 1 && pagatiDopo[0].gmailMessageId == "vecchio" && pagatiDopo[0].pagatoIl == giorno(16, 9, 2026),
-         "scadenza già passata (16/09/2026): riaggiunto tra i PAGATI, pagato il giorno della scadenza")
-verifica(daPagareDopo.contains { $0.gmailMessageId == "imu" && $0.scadenza == giorno(16, 12, 2026) && $0.importoCentesimi == 125000 },
-         "scadenza futura: riaggiunto tra i DA PAGARE con importo e scadenza")
-verifica(daPagareDopo.filter { $0.gmailMessageId == "doppio" }.map { $0.gmailAllegato ?? "" }.sorted() == ["INPS.pdf", "IVA.pdf"],
-         "dalla stessa email riaggiunto solo il modulo mancante (IVA), senza doppioni dell'INPS")
-verifica(gmailEliminati.impostazioni.importati["sparito"] == nil && gmailEliminati.errore == nil,
-         "email non più su Gmail: smette di cercarla, senza errori")
-let scaricate = Set(GmailFinto.richieste.filter { $0.contains("/messages/") && !$0.contains("/attachments/") }.map { ($0 as NSString).lastPathComponent })
-verifica(scaricate.isSuperset(of: ["vecchio", "imu", "doppio"]) && !scaricate.contains("altro") && !scaricate.contains("senzaoggetto"),
-         "riscaricate solo le email con F24 mancanti: \(scaricate.sorted().joined(separator: ", "))")
-GmailFinto.richieste = []
-gmailEliminati.controlla(); attendi { gmailEliminati.inControllo }
-let riscaricate = GmailFinto.richieste.filter { ["vecchio", "imu", "doppio"].contains(($0 as NSString).lastPathComponent) }
-verifica(riscaricate.isEmpty && storeEliminati.elementi.count == 4, "controllo successivo senza F24 mancanti: nessuna email riscaricata, nessun doppione")
-
-let imuRiaggiunto = storeEliminati.elementi.first { $0.gmailMessageId == "imu" }!
-gmailEliminati.eliminaDefinitivamente(imuRiaggiunto)
-gmailEliminati.controlla(); attendi { gmailEliminati.inControllo }
-verifica(!storeEliminati.elementi.contains { $0.gmailMessageId == "imu" } && gmailEliminati.emailConF24Mancanti.isEmpty,
-         "«Elimina definitivamente»: non viene più riaggiunto")
-storeEliminati.elimina(storeEliminati.pagati[0])
-gmailEliminati.controlla(); attendi { gmailEliminati.inControllo }
-verifica(storeEliminati.pagati.count == 1 && storeEliminati.pagati[0].gmailMessageId == "vecchio", "eliminato di nuovo per sbaglio: torna tra i pagati")
-let riapertoEliminati = GmailSync(store: F24Store(fileURL: cartellaEliminati.appendingPathComponent("f24.json")), auth: auth)
-verifica(riapertoEliminati.impostazioni.esclusi.count == 1 && riapertoEliminati.impostazioni.importati["doppio"] == 2,
-         "memoria degli importati ed eliminati definitivamente salvata in gmail.json")
-
-let cartellaMigrazione = URL(fileURLWithPath: "\(cartella)/migrazione")
-try? FileManager.default.createDirectory(at: cartellaMigrazione, withIntermediateDirectories: true)
-try! Data(#"{"emailCommercialista":"studio@bianchi.it","paroleChiave":["MOD. F24"]}"#.utf8).write(to: cartellaMigrazione.appendingPathComponent("gmail.json"))
-let storeMigrazione = F24Store(fileURL: cartellaMigrazione.appendingPathComponent("f24.json"))
-for nome in ["F24NoCalc", "F24NoCalc (1)"] {
-    storeMigrazione.aggiungi(F24(descrizione: "N. 2 MOD. F24 – \(nome)", scadenza: giorno(16, 11, 2026), gmailMessageId: "rate"))
+let studio = "Studio Bianchi <studio@bianchi.it>"
+GmailFinto.messaggi = [
+    // Più vecchia della prima email importata: non va mai aggiunta.
+    messaggio("vecchissimo", giorno(1, 6, 2026), da: studio, oggetto: "MOD. F24 giugno", testo: "Da pagare entro il 16/06/2026.", allegati: []),
+    messaggio("primo", giorno(1, 9, 2026), da: studio, oggetto: "MOD. F24 settembre", testo: "Scadenza 16/09/2026, importo € 120,00", allegati: []),
+    messaggio("rate", giorno(28, 10, 2026), da: studio, oggetto: "N. 2 MOD. F24 PER IL VERSAMENTO RATE MINIMALE INPS 2026",
+              testo: "Da pagare entro il 16/11/2026.", allegati: [("F24NoCalc.pdf", "att-inps"), ("F24NoCalc (1).pdf", "att-iva")]),
+    messaggio("banca", giorno(29, 10, 2026), da: "Banca <info@banca.it>", oggetto: "MOD. F24 promemoria", testo: "", allegati: []),
+]
+let msRate = Int64(giorno(28, 10, 2026).timeIntervalSince1970 * 1000) + 123
+let descrizioneRate = "N. 2 MOD. F24 PER IL VERSAMENTO RATE MINIMALE INPS 2026"
+func gmailDiProva(_ cartellaProva: URL, json: String) -> (F24Store, GmailSync) {
+    try? FileManager.default.createDirectory(at: cartellaProva, withIntermediateDirectories: true)
+    try! Data(json.utf8).write(to: cartellaProva.appendingPathComponent("gmail.json"))
+    let store = F24Store(fileURL: cartellaProva.appendingPathComponent("f24.json"))
+    let gmail = GmailSync(store: store, auth: GoogleAuth(servizioPortachiavi: nil, credenziali: CredenzialiGoogle(clientId: "id", clientSecret: "s", refreshToken: "r")))
+    return (store, gmail)
 }
-storeMigrazione.aggiungi(F24(descrizione: "Inserito a mano", scadenza: giorno(16, 11, 2026)))
-let migrato = GmailSync(store: storeMigrazione, auth: auth)
-verifica(migrato.impostazioni.importati == ["rate": 2] && migrato.emailConF24Mancanti.isEmpty,
-         "F24 già presenti (versioni precedenti): ricordati come importati, niente da riaggiungere")
+func scaricati() -> [String] {
+    GmailFinto.richieste.filter { $0.contains("/messages/") && !$0.contains("/attachments/") }.map { ($0 as NSString).lastPathComponent }
+}
+
+// Il tuo caso: F24 importati con una versione precedente, poi uno delle due rate eliminato prima dell'aggiornamento
+// (anche la memoria della 1.12, ricavata dalla lista, non ne sapeva nulla).
+let (storeCaso, gmailCaso) = gmailDiProva(URL(fileURLWithPath: "\(cartella)/caso"), json: """
+{"emailCommercialista":"studio@bianchi.it","paroleChiave":["MOD. F24"],"tuttoIlDominio":true,"importati":{"rate":1},
+ "ultimoModulo":{"messaggioId":"rate","ricevutoIlMs":\(msRate),"oggetto":"\(descrizioneRate)"}}
+""")
+storeCaso.aggiungi(F24(descrizione: "MOD. F24 settembre", importoCentesimi: 12000, scadenza: giorno(16, 9, 2026), pagatoIl: giorno(15, 9, 2026), gmailMessageId: "primo"))
+storeCaso.aggiungi(F24(descrizione: descrizioneRate + " – F24NoCalc", scadenza: giorno(16, 11, 2026), gmailMessageId: "rate"))
+GmailFinto.richieste = []
+gmailCaso.controlla(); attendi { gmailCaso.inControllo }
+let rateDaPagare = storeCaso.daPagare.filter { $0.gmailMessageId == "rate" }
+verifica(rateDaPagare.count == 2 && rateDaPagare.contains { $0.descrizione.hasSuffix("F24NoCalc (1)") && $0.importoCentesimi == 215075 },
+         "rata eliminata prima dell'aggiornamento: riaggiunta tra i DA PAGARE con il suo importo (\(gmailCaso.esito ?? gmailCaso.errore ?? ""))")
+verifica(gmailCaso.esito?.contains("riaggiunto 1 F24 eliminato") == true && storeCaso.elementi.count == 3, "nessun doppione della rata rimasta né del pagato")
+verifica(!storeCaso.elementi.contains { $0.gmailMessageId == "vecchissimo" || $0.gmailMessageId == "banca" },
+         "email più vecchia della prima importata e email della banca: non aggiunte")
+verifica(gmailCaso.impostazioni.inizioMs == Int64(giorno(1, 9, 2026).timeIntervalSince1970 * 1000) + 123,
+         "prima email importata ricavata dalle email degli F24 in lista (solo la data)")
+
+GmailFinto.richieste = []
+gmailCaso.controlla(); attendi { gmailCaso.inControllo }
+verifica(scaricati().isEmpty && storeCaso.elementi.count == 3, "controllo successivo, niente di mancante: solo la ricerca, nessuna email scaricata")
+
+storeCaso.elimina(storeCaso.daPagare.first { $0.descrizione.hasSuffix("F24NoCalc (1)") }!)
+GmailFinto.richieste = []
+gmailCaso.controlla(); attendi { gmailCaso.inControllo }
+verifica(storeCaso.daPagare.filter { $0.gmailMessageId == "rate" }.count == 2 && scaricati() == ["rate"],
+         "eliminata di nuovo: riaggiunta riscaricando solo quell'email")
+
+storeCaso.elimina(storeCaso.pagati[0])
+gmailCaso.controlla(); attendi { gmailCaso.inControllo }
+let primoRiaggiunto = storeCaso.pagati.first { $0.gmailMessageId == "primo" }
+verifica(primoRiaggiunto?.pagatoIl == giorno(16, 9, 2026) && primoRiaggiunto?.importoCentesimi == 12000,
+         "scadenza già passata (16/09/2026): riaggiunto tra i PAGATI, pagato il giorno della scadenza")
+
+gmailCaso.eliminaDefinitivamente(storeCaso.daPagare.first { $0.descrizione.hasSuffix("F24NoCalc (1)") }!)
+GmailFinto.richieste = []
+gmailCaso.controlla(); attendi { gmailCaso.inControllo }
+verifica(storeCaso.daPagare.filter { $0.gmailMessageId == "rate" }.count == 1 && scaricati().isEmpty,
+         "«Elimina definitivamente»: non torna e l'email non viene riscaricata")
+
+GmailFinto.messaggi.removeAll { $0["id"] as? String == "primo" }
+storeCaso.elimina(storeCaso.pagati[0])
+gmailCaso.controlla(); attendi { gmailCaso.inControllo }
+verifica(gmailCaso.impostazioni.importati["primo"] == nil && gmailCaso.errore == nil, "email cancellata da Gmail: non si può riaggiungere, nessun errore")
+let riapertoCaso = GmailSync(store: F24Store(fileURL: URL(fileURLWithPath: "\(cartella)/caso/f24.json")), auth: auth)
+verifica(riapertoCaso.impostazioni.importati["rate"] == 2 && riapertoCaso.impostazioni.importati["banca"] == 0 && riapertoCaso.impostazioni.esclusi.count == 1,
+         "memoria salvata: «rate» ha 2 F24, «banca» nessuno, 1 eliminato definitivamente")
 
 print(falliti == 0 ? "\nTUTTO OK (\(superati) controlli)" : "\n\(falliti) VERIFICHE FALLITE su \(superati + falliti)")
 exit(falliti == 0 ? 0 : 1)

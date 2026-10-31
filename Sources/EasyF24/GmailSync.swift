@@ -36,9 +36,13 @@ final class GmailSync: ObservableObject {
         /// Account Gmail collegato (solo per mostrarlo).
         var account: String?
         var ultimoModulo: UltimoModulo?
-        /// Quanti F24 sono stati importati da ogni email (id del messaggio Gmail → numero di moduli):
-        /// serve ad accorgersi, senza chiedere nulla a Gmail, se qualcuno è stato eliminato.
+        /// Quanti F24 contiene ogni email già letta (id del messaggio Gmail → numero di moduli; 0 = email
+        /// non valida): serve ad accorgersi, senza rileggere l'email, se qualcuno è stato eliminato.
         var importati: [String: Int] = [:]
+        /// Ora di arrivo (ms) della prima email importata: le email più vecchie non vengono mai aggiunte.
+        var inizioMs: Int64?
+        /// 2 = `importati` contiene i moduli davvero letti dalle email (nella 1.12 era ricavato dalla lista).
+        var versioneMemoria = 2
         /// F24 eliminati definitivamente: non vengono più riaggiunti.
         var esclusi: [Escluso] = []
 
@@ -62,7 +66,11 @@ final class GmailSync: ObservableObject {
             tuttoIlDominio = try valori.decodeIfPresent(Bool.self, forKey: .tuttoIlDominio) ?? true
             account = try valori.decodeIfPresent(String.self, forKey: .account)
             ultimoModulo = try valori.decodeIfPresent(UltimoModulo.self, forKey: .ultimoModulo)
-            importati = try valori.decodeIfPresent([String: Int].self, forKey: .importati) ?? [:]
+            // La memoria della 1.12 era ricavata dagli F24 presenti, quindi non sapeva di quelli già
+            // eliminati: si riparte da zero e ogni email viene riletta una volta.
+            let versione = try valori.decodeIfPresent(Int.self, forKey: .versioneMemoria) ?? 1
+            importati = versione >= 2 ? try valori.decodeIfPresent([String: Int].self, forKey: .importati) ?? [:] : [:]
+            inizioMs = try valori.decodeIfPresent(Int64.self, forKey: .inizioMs)
             esclusi = try valori.decodeIfPresent([Escluso].self, forKey: .esclusi) ?? []
         }
     }
@@ -129,17 +137,6 @@ final class GmailSync: ObservableObject {
             .flatMap { try? GmailSync.decoder.decode(Impostazioni.self, from: $0) } ?? Impostazioni()
         FileRiservato.proteggi(fileURL)
         stato = auth.credenziali == nil ? .daConfigurare : (auth.collegato ? .collegato : .nonCollegato)
-        if impostazioni.importati.isEmpty {
-            // Prima volta con questa versione: la memoria degli importati parte dagli F24 già presenti.
-            for f24 in store.elementi {
-                if let id = f24.gmailMessageId {
-                    impostazioni.importati[id, default: 0] += 1
-                }
-            }
-            if !impostazioni.importati.isEmpty {
-                salva()
-            }
-        }
     }
 
     /// Primo controllo e poi uno ogni mezz'ora, finché l'app resta aperta.
@@ -244,12 +241,17 @@ final class GmailSync: ObservableObject {
     /// La ricerca fatta su Gmail: mittente = commercialista (o il suo dominio) e oggetto con
     /// almeno una delle parole chiave, es. `from:x (subject:"MOD. F24" OR subject:"Deleghe")`.
     var query: String {
+        query(dopoMs: impostazioni.ultimoModulo?.ricevutoIlMs)
+    }
+
+    /// La stessa ricerca, limitata alle email arrivate da `dopoMs` in poi (con un giorno di margine:
+    /// il confronto preciso si fa poi sull'ora di arrivo).
+    func query(dopoMs: Int64?) -> String {
         let mittente = cercaPerDominio ? (dominioCommercialista ?? "") : impostazioni.emailCommercialista
         let oggetti = paroleChiave.map { "subject:\"\($0)\"" }
         var parti = ["from:\(mittente)", oggetti.count == 1 ? oggetti[0] : "(" + oggetti.joined(separator: " OR ") + ")"]
-        if let ultimo = impostazioni.ultimoModulo {
-            // Un giorno di margine: il confronto preciso si fa poi sull'ora di arrivo.
-            parti.append("after:\(ultimo.ricevutoIlMs / 1000 - 86_400)")
+        if let dopo = dopoMs {
+            parti.append("after:\(dopo / 1000 - 86_400)")
         }
         return parti.joined(separator: " ")
     }
@@ -283,7 +285,9 @@ final class GmailSync: ObservableObject {
             switch risultato {
             case .failure(let errore):
                 self?.termina(errore: errore)
-            case .success(let ids):
+            case .success(let trovati):
+                // Le email già lette (importate, scartate o più vecchie della prima importata) non si riscaricano.
+                let ids = trovati.filter { self?.impostazioni.importati[$0] == nil }
                 inSequenza(ids, passo: { id, fatto in api.messaggio(id, fine: fatto) }) { [weak self] risultato in
                     switch risultato {
                     case .failure(let errore):
@@ -309,6 +313,10 @@ final class GmailSync: ObservableObject {
         let validi = candidati.filter { $0.autenticato(da: email) }.sorted { $0.ricevutoIlMs < $1.ricevutoIlMs }
         let ultimoMs = impostazioni.ultimoModulo?.ricevutoIlMs ?? 0
         let ignorate = candidati.filter { !$0.autenticato(da: email) && $0.ricevutoIlMs > ultimoMs }.count
+        // Email che non sono F24 del commercialista (o non autentiche): non contengono F24, inutile riscaricarle.
+        for messaggio in messaggi where !validi.contains(where: { $0.id == messaggio.id }) && impostazioni.importati[messaggio.id] == nil {
+            impostazioni.importati[messaggio.id] = 0
+        }
         guard let piuRecente = validi.last else {
             ripristinaEliminati(con: api) { [weak self] ripristinati in
                 self?.termina(nuovi: 0, ripristinati: ripristinati, ignorate: ignorate)
@@ -336,6 +344,13 @@ final class GmailSync: ObservableObject {
                 aggiunti.forEach { self.store.aggiungi($0) }
                 for (messaggio, moduli) in zip(nuovi, gruppi) {
                     self.impostazioni.importati[messaggio.id] = moduli.count
+                    self.impostazioni.inizioMs = min(self.impostazioni.inizioMs ?? messaggio.ricevutoIlMs, messaggio.ricevutoIlMs)
+                }
+                // Email più vecchie della prima importata (es. alla prima volta): non vanno mai aggiunte.
+                if let inizio = self.impostazioni.inizioMs {
+                    for messaggio in validi where messaggio.ricevutoIlMs < inizio && self.impostazioni.importati[messaggio.id] == nil {
+                        self.impostazioni.importati[messaggio.id] = 0
+                    }
                 }
                 if piuRecente.ricevutoIlMs > (self.impostazioni.ultimoModulo?.ricevutoIlMs ?? 0) {
                     self.impostazioni.ultimoModulo = UltimoModulo(messaggioId: piuRecente.id,
@@ -476,56 +491,154 @@ final class GmailSync: ObservableObject {
             .sorted()
     }
 
-    /// Riscarica (solo in memoria) le email da cui mancano F24 e li riaggiunge: tra quelli da pagare se
-    /// la scadenza non è passata, altrimenti tra i pagati (con la scadenza come data del pagamento).
+    /// Quanti F24 di ogni email ci sono ora nella lista.
+    private var presentiPerEmail: [String: Int] {
+        var presenti: [String: Int] = [:]
+        for f24 in store.elementi {
+            if let id = f24.gmailMessageId {
+                presenti[id, default: 0] += 1
+            }
+        }
+        return presenti
+    }
+
+    /// Cosa si è trovato rileggendo un'email per il ripristino.
+    private enum EmailRiletta {
+        case moduli([LettoreF24.Letto])
+        /// Non è un'email del commercialista con la parola chiave, o non è autentica: nessun F24.
+        case nonValida
+        /// Non c'è più su Gmail.
+        case sparita
+    }
+
+    /// Confronta le email del commercialista trovate su Gmail (dalla prima importata in poi) con gli F24
+    /// della lista e riaggiunge quelli mancanti: tra i da pagare se la scadenza non è passata, altrimenti
+    /// tra i pagati (con la scadenza come data del pagamento). Per restare leggero: una sola ricerca che
+    /// restituisce solo gli id; ogni email si scarica una volta per sapere quanti F24 contiene, poi solo
+    /// se ne manca qualcuno.
     private func ripristinaEliminati(con api: GmailAPI, fine: @escaping (Int) -> Void) {
-        let mancanti = Array(emailConF24Mancanti.prefix(GmailSync.massimeEmailDaRipristinare))
-        guard !mancanti.isEmpty else {
+        determinaInizio(con: api) { [weak self] inizio in
+            guard let self = self, let inizio = inizio else {
+                fine(0)
+                return
+            }
+            api.cerca(self.query(dopoMs: inizio), massimo: 100) { [weak self] risultato in
+                guard let self = self, case .success(let trovate) = risultato else {
+                    fine(0)
+                    return
+                }
+                let presenti = self.presentiPerEmail
+                var daRileggere: [String] = []
+                for id in trovate + self.emailConF24Mancanti where !daRileggere.contains(id) {
+                    let esclusi = self.impostazioni.esclusi.filter { $0.messaggioId == id }.count
+                    if let numero = self.impostazioni.importati[id], (presenti[id] ?? 0) >= numero - esclusi {
+                        continue
+                    }
+                    daRileggere.append(id)
+                }
+                self.rileggiEmail(Array(daRileggere.prefix(GmailSync.massimeEmailDaRipristinare)), dopoMs: inizio, con: api, fine: fine)
+            }
+        }
+    }
+
+    private func rileggiEmail(_ ids: [String], dopoMs inizio: Int64, con api: GmailAPI, fine: @escaping (Int) -> Void) {
+        guard !ids.isEmpty else {
             fine(0)
             return
         }
-        inSequenza(mancanti, passo: { (id: String, fatto: @escaping (Result<[LettoreF24.Letto], ErroreGmail>) -> Void) in
+        let email = impostazioni.emailCommercialista
+        let perDominio = cercaPerDominio
+        let parole = paroleChiave
+        inSequenza(ids, passo: { (id: String, fatto: @escaping (Result<EmailRiletta, ErroreGmail>) -> Void) in
             api.messaggio(id) { risultato in
                 switch risultato {
                 case .success(let messaggio):
-                    GmailSync.leggi(messaggio, con: api, fine: fatto)
+                    // Stessi controlli dell'importazione: mittente, parola chiave, email autentica.
+                    guard messaggio.ricevutoIlMs >= inizio,
+                          GmailSync.eDelCommercialista(messaggio, email: email, tuttoIlDominio: perDominio, paroleChiave: parole),
+                          messaggio.autenticato(da: email) else {
+                        fatto(.success(.nonValida))
+                        return
+                    }
+                    GmailSync.leggi(messaggio, con: api) { letti in fatto(letti.map { .moduli($0) }) }
                 case .failure(.nonTrovato):
-                    fatto(.success([]))
+                    fatto(.success(.sparita))
                 case .failure(let errore):
                     fatto(.failure(errore))
                 }
             }
         }) { [weak self] risultato in
             guard let self = self else { return }
-            guard case .success(let perEmail) = risultato else {
+            guard case .success(let rilette) = risultato else {
                 // Errore di rete o di Gmail: si riproverà al prossimo controllo.
                 fine(0)
                 return
             }
             var ripristinati = 0
             let oggi = Calendar.current.startOfDay(for: Date())
-            for (id, letti) in zip(mancanti, perEmail) {
-                if letti.isEmpty {
-                    // L'email non c'è più su Gmail: non si può riaggiungere, si smette di cercarla.
+            for (id, riletta) in zip(ids, rilette) {
+                switch riletta {
+                case .sparita:
                     self.impostazioni.importati[id] = nil
-                    continue
-                }
-                let presenti = self.store.elementi.filter { $0.gmailMessageId == id }
-                for letto in letti {
-                    var modulo = letto.f24
-                    let giaPresente = presenti.contains { GmailSync.stessoModulo($0, allegato: modulo.gmailAllegato, descrizione: modulo.descrizione) }
-                        || (letti.count == 1 && !presenti.isEmpty)
-                    guard !giaPresente, !self.impostazioni.esclusi.contains(where: { $0.corrisponde(modulo) }) else { continue }
-                    if modulo.scadenza < oggi {
-                        modulo.pagatoIl = modulo.scadenza
-                        modulo.daVerificare = false
+                case .nonValida:
+                    self.impostazioni.importati[id] = 0
+                case .moduli(let letti):
+                    self.impostazioni.importati[id] = letti.count
+                    let presenti = self.store.elementi.filter { $0.gmailMessageId == id }
+                    for letto in letti {
+                        var modulo = letto.f24
+                        let giaPresente = presenti.contains { GmailSync.stessoModulo($0, allegato: modulo.gmailAllegato, descrizione: modulo.descrizione) }
+                            || (letti.count == 1 && !presenti.isEmpty)
+                        guard !giaPresente, !self.impostazioni.esclusi.contains(where: { $0.corrisponde(modulo) }) else { continue }
+                        if modulo.scadenza < oggi {
+                            modulo.pagatoIl = modulo.scadenza
+                            modulo.daVerificare = false
+                        }
+                        self.store.aggiungi(modulo)
+                        ripristinati += 1
                     }
-                    self.store.aggiungi(modulo)
-                    ripristinati += 1
                 }
             }
             self.salva()
             fine(ripristinati)
+        }
+    }
+
+    /// L'ora di arrivo della prima email importata. Se non è salvata (F24 importati con versioni
+    /// precedenti) si ricava una volta sola dalle email degli F24 in lista e dall'ultimo modulo trovato,
+    /// chiedendo a Gmail solo la data (non l'email intera).
+    private func determinaInizio(con api: GmailAPI, fine: @escaping (Int64?) -> Void) {
+        if let inizio = impostazioni.inizioMs {
+            fine(inizio)
+            return
+        }
+        var noti: [String] = []
+        for id in store.elementi.compactMap({ $0.gmailMessageId }) + [impostazioni.ultimoModulo?.messaggioId].compactMap({ $0 })
+        where !noti.contains(id) {
+            noti.append(id)
+        }
+        guard !noti.isEmpty else {
+            fine(nil)
+            return
+        }
+        inSequenza(Array(noti.prefix(20)), passo: { (id: String, fatto: @escaping (Result<Int64?, ErroreGmail>) -> Void) in
+            api.messaggio(id, soloData: true) { risultato in
+                switch risultato {
+                case .success(let messaggio): fatto(.success(messaggio.ricevutoIlMs))
+                case .failure(.nonTrovato): fatto(.success(nil))
+                case .failure(let errore): fatto(.failure(errore))
+                }
+            }
+        }) { [weak self] risultato in
+            guard let self = self, case .success(let date) = risultato else {
+                fine(nil)
+                return
+            }
+            let ultimo = self.impostazioni.ultimoModulo?.ricevutoIlMs
+            let inizio = (date.compactMap { $0 } + [ultimo].compactMap { $0 }).min()
+            self.impostazioni.inizioMs = inizio
+            self.salva()
+            fine(inizio)
         }
     }
 
