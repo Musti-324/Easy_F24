@@ -36,10 +36,10 @@ struct RigaDaPagare: View {
             if f24.gmailMessageId != nil {
                 HStack(spacing: 4) {
                     Image(systemName: "envelope")
-                    Text(f24.daVerificare ? "Arrivato via Gmail · controlla importo e scadenza" : "Arrivato via Gmail")
+                    Text(f24.avvisoGmail.map { "Arrivato via Gmail · " + $0 } ?? "Arrivato via Gmail")
                 }
                 .font(.caption)
-                .foregroundColor(f24.daVerificare ? .orange : .secondary)
+                .foregroundColor(f24.avvisoGmail == nil ? .secondary : .orange)
             }
         }
         .modifier(StileScheda(bordo: stato.urgente ? stato.colore : nil))

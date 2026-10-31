@@ -99,6 +99,30 @@ verifica(due.allSatisfy { $0.scadenza == giorno(16, 11, 2026) }, "data con anno 
 let html = LettoreF24.togliHTML("<p>Totale&nbsp;<b>&euro; 1.000,00</b></p><style>p{}</style>")
 verifica(LettoreF24.importo(lettura: nil, testoEmail: html)?.centesimi == 100000, "email in HTML")
 
+print("— Avvisi precisi: importo o scadenza")
+// Come l'email reale: due moduli PDF senza saldo leggibile, scadenza scritta nel testo.
+let pdfSenzaSaldo = pdf([[("F24 RATE MINIMALE INPS", 40, 805), ("SEZIONE INPS  CF  2026", 40, 600)]])
+let rate = LettoreF24.moduli(messaggioId: "r", oggetto: "N. 2 MOD. F24 PER IL VERSAMENTO RATE MINIMALE INPS 2026",
+                             corpo: "In allegato i modelli con scadenza 16/11/2026.", ricevutoIl: giorno(28, 10, 2026),
+                             pdf: [.init(nome: "F24NoCalc.pdf", dati: pdfSenzaSaldo), .init(nome: "F24NoCalc (1).pdf", dati: pdfSenzaSaldo)])
+verifica(rate.count == 2 && rate.allSatisfy { $0.scadenza == giorno(16, 11, 2026) && !$0.scadenzaDaVerificare },
+         "due moduli, scadenza dal testo dell'email: non da verificare")
+verifica(rate.allSatisfy { $0.importoCentesimi == nil && $0.importoDaVerificare }
+         && rate[0].avvisoGmail == "importo non trovato: inseriscilo con un doppio clic",
+         "avviso solo sull'importo mancante: «\(rate[0].avvisoGmail ?? "")»")
+var conImporto = F24(descrizione: "x", importoCentesimi: 100, scadenza: giorno(1, 1, 2027), gmailMessageId: "x",
+                     importoDaVerificare: true, scadenzaDaVerificare: true)
+verifica(conImporto.avvisoGmail == "controlla l'importo · controlla la scadenza", "importo e scadenza incerti: entrambi segnalati")
+conImporto.daVerificare = false
+verifica(conImporto.avvisoGmail == nil && !conImporto.importoDaVerificare && !conImporto.scadenzaDaVerificare, "dopo la modifica nessun avviso")
+let json18 = #"{"descrizione":"Vecchio","id":"11111111-2222-3333-4444-555555555555","scadenza":"2026-12-08T23:00:00Z","gmailMessageId":"g","daVerificare":true}"#
+let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
+let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
+let dal18 = try! decoder.decode(F24.self, from: Data(json18.utf8))
+verifica(dal18.importoDaVerificare && dal18.scadenzaDaVerificare, "archivio della 1.8 con un solo avviso: vale per entrambi")
+let riletto = try! decoder.decode(F24.self, from: encoder.encode(dal18))
+verifica(riletto == dal18 && String(data: try! encoder.encode(dal18), encoding: .utf8)!.contains("importoDaVerificare"), "salvato e riletto con i nuovi avvisi")
+
 // MARK: - Lettura del PDF solo dove serve
 
 print("— Lettura del PDF solo dove serve")

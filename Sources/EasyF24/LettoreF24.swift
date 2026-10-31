@@ -43,7 +43,8 @@ enum LettoreF24 {
                    importoCentesimi: trovatoImporto?.centesimi,
                    scadenza: trovataScadenza?.data ?? Calendar.current.startOfDay(for: ricevutoIl),
                    gmailMessageId: messaggioId,
-                   daVerificare: trovatoImporto?.sicuro != true || trovataScadenza?.sicura != true)
+                   importoDaVerificare: trovatoImporto?.sicuro != true,
+                   scadenzaDaVerificare: trovataScadenza?.sicura != true)
     }
 
     // MARK: - Lettura del PDF (solo dove serve)
