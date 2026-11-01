@@ -225,6 +225,7 @@ Sources/EasyF24/
   Rete.swift         connessione verso Google senza cache né cookie
   CalendarioGoogle.swift  API di Google Calendar e sincronizzazione F24 ↔ eventi
   FoglioCalendario.swift  impostazioni di Google Calendar
+  MenuTrattenuti.swift    rimedio alla chiusura su macOS 11 premendo ⌘ + tasto
 Resources/
   EasyF24.entitlements        permessi della sandbox
   container-migration.plist   spostamento dei dati delle versioni precedenti nella sandbox

@@ -773,5 +773,28 @@ impostazioniProva.oraEventoComeData = Calendar.current.startOfDay(for: Date()).a
 verifica(impostazioniProva.notifiche[0].quantita == 3 && impostazioniProva.notifiche[0].ora == 8 * 60 + 15 && impostazioniProva.oraEvento == 17 * 60,
          "calendario: quantità, ora della notifica e ora dell'evento collegate ai campi")
 
+print("— Menu della barra tenuti in memoria (macOS 11)")
+weak var sottomenuVecchio: NSMenu?
+weak var barraVecchia: NSMenu?
+let voceMenu = NSMenuItem(title: "Modifica", action: nil, keyEquivalent: "")
+MenuTrattenuti.attiva()
+MenuTrattenuti.attiva()
+autoreleasepool {
+    let primo = NSMenu(title: "Modifica")
+    sottomenuVecchio = primo
+    voceMenu.submenu = primo
+    voceMenu.submenu = NSMenu(title: "Modifica")
+    let barra = NSMenu(title: "Barra")
+    barraVecchia = barra
+    NSApplication.shared.mainMenu = barra
+    NSApplication.shared.mainMenu = NSMenu(title: "Barra")
+}
+verifica(sottomenuVecchio != nil && voceMenu.submenu !== sottomenuVecchio && voceMenu.submenu?.title == "Modifica",
+         "sottomenu ricostruito: la voce usa il nuovo, il vecchio resta valido")
+verifica(barraVecchia != nil && NSApplication.shared.mainMenu !== barraVecchia && NSApplication.shared.mainMenu?.title == "Barra",
+         "barra dei menu sostituita: la vecchia resta valida")
+voceMenu.submenu = nil
+verifica(voceMenu.submenu == nil && MenuTrattenuti.quanti == 4, "togliere un sottomenu funziona ancora, la seconda attivazione non annulla la prima")
+
 print(falliti == 0 ? "\nTUTTO OK (\(superati) controlli)" : "\n\(falliti) VERIFICHE FALLITE su \(superati + falliti)")
 exit(falliti == 0 ? 0 : 1)

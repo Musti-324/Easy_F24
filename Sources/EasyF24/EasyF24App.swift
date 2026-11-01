@@ -8,6 +8,10 @@ struct EasyF24App: App {
     @StateObject private var calendario: CalendarioSync
 
     init() {
+        // Solo su macOS 11, dove si chiudeva premendo ⌘ + tasto dopo aver chiuso un foglio.
+        if !ProcessInfo.processInfo.isOperatingSystemAtLeast(OperatingSystemVersion(majorVersion: 12, minorVersion: 0, patchVersion: 0)) {
+            MenuTrattenuti.attiva()
+        }
         let store = F24Store()
         let gmail = GmailSync(store: store)
         _store = StateObject(wrappedValue: store)
